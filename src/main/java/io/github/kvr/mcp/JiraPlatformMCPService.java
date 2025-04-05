@@ -77,9 +77,10 @@ public class JiraPlatformMCPService {
         return new IssuesApi(apiClient).getIssue(issueIdOrKey, fields, fieldsByKeys, expand, properties, updateHistory, false);
     }
 
-    @Tool(name = "search_issue", description = "Search for issues using JQL enhanced search")
-    public SearchAndReconcileResults searchIssue(@ToolArg(description = """
+    @Tool(name = "search_issue_by_jql", description = "Search for issues using JQL enhanced search")
+    public SearchAndReconcileResults searchIssueByJql(@ToolArg(required = false, description = """
         A JQL (JIRA Query Language) expression to search for issues.
+        JQL fields documentation: https://support.atlassian.com/jira-software-cloud/docs/jql-fields/
         Examples:
         - Find Epics: "issuetype = Epic AND project = PROJECT_KEY"
         - Find issues in Epic: "parent = PROJECT_KEY-123"
@@ -90,7 +91,7 @@ public class JiraPlatformMCPService {
         - Find by priority: "priority = High AND project = PROJECT_KEY"
         """) String jql,
         @ToolArg(required = false, description = "The maximum number of items to return per page. To manage page size, API may return fewer items per page where a large number of fields are requested. The greatest number of items returned per page is achieved when requesting id or key only. It returns max 5000 issues. Default is 50 if not provided.") Integer maxResults,
-        @ToolArg(description = """
+        @ToolArg(required = false, description = """
         A list of fields to return for each issue, use it to retrieve a subset of fields. This parameter accepts a comma-separated list.
         Allowed values:
         *all Returns all fields.
