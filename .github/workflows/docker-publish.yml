@@ -48,5 +48,5 @@ jobs:
           file: src/main/docker/Dockerfile.jvm
           push: true
           tags: |
-            ${{ secrets.DOCKER_USERNAME }}/jdbc-mcp:${{ steps.tag.outputs.TAG_NAME }}
-            ${{ secrets.DOCKER_USERNAME }}/jdbc-mcp:latest
+            ${{ secrets.DOCKER_USERNAME }}/jira-mcp:${{ steps.tag.outputs.TAG_NAME }}
+            ${{ secrets.DOCKER_USERNAME }}/jira-mcp:latest
