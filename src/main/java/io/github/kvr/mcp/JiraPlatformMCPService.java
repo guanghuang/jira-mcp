@@ -2,7 +2,6 @@ package io.github.kvr.mcp;
 
 import java.util.HashMap;
 import java.util.List;
-import java.util.Map;
 
 import com.atlassian.jira.invoker.ApiClient;
 import com.atlassian.jira.invoker.ApiException;
@@ -143,8 +142,12 @@ public class JiraPlatformMCPService {
         @ToolArg(description = "The summary of the issue.") String summary,
         @ToolArg(required = false, description = "The assignee Id of the issue.") String assigneeId,
         @ToolArg(required = false, description = "The description of the issue.") String description,
-        @ToolArg(required = false, description = "List of issue screen fields to update, specifying the sub-field to update and its value for each field. This field provides a straightforward option when setting a sub-field. ") Map<String, Object> fields,
-        @ToolArg(required = false, description = "List of issue properties to update, specifying the sub-field to update and its value for each field. This field provides a straightforward option when setting a sub-field. ") Map<String, Object> properties
+                                    @ToolArg(required = false, description = """
+            A valid JSON object of fields to update as a string.
+            Example: {"priority": {"name": "High"}, "assignee": {"id": "2342423423"}, "customfield_10010": 1,  "summary": "Completed orders still displaying in pending"}""") String fields,
+                                    @ToolArg(required = false, description = """
+            List of properties to update.
+            Example: [{"key": "key1", "value":"value1"}, {"key": "key2", "value": "value2"}]""") List<EntityProperty> properties
         ) throws ApiException {
         IssueUpdateDetails issueUpdateDetails = new IssueUpdateDetails();
         if (projectKeyOrId != null) {
@@ -169,60 +172,49 @@ public class JiraPlatformMCPService {
                 }});
             }
         }
+        if (fields != null) {
+            issueUpdateDetails.fields(Helper.getMapFromJsonString(fields));
+        }
         if (assigneeId != null) {
             issueUpdateDetails.putFieldsItem("assignee", new HashMap<String, Object>() {{
                 put("id", assigneeId);
             }});
         }
-        if (fields != null) {
-            for (Map.Entry<String, Object> entry : fields.entrySet()) {
-                issueUpdateDetails.putFieldsItem(entry.getKey(), entry.getValue());
-            }
-        }
         if (summary != null) {
             issueUpdateDetails.putFieldsItem("summary", summary);
         }
         if (description != null) {
             issueUpdateDetails.putFieldsItem("description", description);
         }
-        populateProperties(properties, issueUpdateDetails);
+
 
         return new IssuesApi(apiClient).createIssue(issueUpdateDetails, null);  
     }
 
-    private void populateProperties(@ToolArg(required = false, description = "List of issue properties to update, specifying the sub-field to update and its value for each field. This field provides a straightforward option when setting a sub-field. ") Map<String, Object> properties, IssueUpdateDetails issueUpdateDetails) {
-        if (properties != null) {
-            for (Map.Entry<String, Object> entry : properties.entrySet()) {
-                var property = new EntityProperty();
-                property.setKey(entry.getKey());
-                property.setValue(entry.getValue());
-                issueUpdateDetails.addPropertiesItem(property);
-            }
-        }
-    }
-
     @Tool(name = "update_issue", description = "Update an jira issue")
-    public Object updateIssue(@ToolArg(description = "The ID or key of the issue.") String issueIdOrKey,
-        @ToolArg(description = "The summary of the issue.") String summary,
+    public String updateIssue(@ToolArg(description = "The ID or key of the issue.") String issueIdOrKey,
+        @ToolArg(required = false, description = "The summary of the issue.") String summary,
         @ToolArg(required = false, description = "The description of the issue.") String description,
-        @ToolArg(required = false, description = "List of issue screen fields to update, specifying the sub-field to update and its value for each field. This field provides a straightforward option when setting a sub-field. ") Map<String, Object> fields,
-        @ToolArg(required = false, description = "List of issue properties to update, specifying the sub-field to update and its value for each field. This field provides a straightforward option when setting a sub-field. ") Map<String, Object> properties
+        @ToolArg(required = false, description = """
+            A valid JSON object of fields to update as a string. For assignee, use key "id" for user account Id
+            Example: {"priority": {"name": "High"}, "assignee": {"id": "2342423423"}, "customfield_10010": 1,  "summary": "Completed orders still displaying in pending"}""") String fields,
+        @ToolArg(required = false, description = """
+            List of properties to update.
+            Example: [{"key": "key1", "value":"value1"}, {"key": "key2", "value": "value2"}]""") List<EntityProperty> properties
         ) throws ApiException {
         IssueUpdateDetails issueUpdateDetails = new IssueUpdateDetails();
+        if (fields != null) {
+            issueUpdateDetails.fields(Helper.getMapFromJsonString(fields));
+        }
         if (summary != null) {
             issueUpdateDetails.putFieldsItem("summary", summary);
         }
         if (description != null) {
             issueUpdateDetails.putFieldsItem("description", description);
         }
-        if (fields != null) {
-            for (Map.Entry<String, Object> entry : fields.entrySet()) {
-                issueUpdateDetails.putFieldsItem(entry.getKey(), entry.getValue());
-            }
-        }
 
-        populateProperties(properties, issueUpdateDetails);
-        return new IssuesApi(apiClient).editIssue(issueIdOrKey, issueUpdateDetails, null, null, null, null, null);
+        var ret = new IssuesApi(apiClient).editIssue(issueIdOrKey, issueUpdateDetails, null, null, null, null, null);
+        return ret == null ? "Issue updated" : ret.toString();
     }
 
     @Tool(name = "delete_issue", description = "Delete an jira issue")
@@ -243,16 +235,18 @@ public class JiraPlatformMCPService {
     @Tool(name = "transition_jira_issue", description = "Transition an jira issue")
     public String transitionIssue(@ToolArg(description = "The ID or key of the issue.") String issueIdOrKey,
         @ToolArg(description = "The transition Id to perform.") String transitionId,
-        @ToolArg(required = false, description = "List of issue screen fields to update, specifying the sub-field to update and its value for each field. This field provides a straightforward option when setting a sub-field. ") Map<String, Object> fields) throws ApiException {
+                                  @ToolArg(required = false, description = """
+            A valid JSON object of fields to update as a string. For assignee, use key "id"
+            Example: {"priority": {"name": "High"}, "assignee": {"id": "2342423423"}, "customfield_10010": 1,  "summary": "Completed orders still displaying in pending"}""") String fields
+                                  ) throws ApiException {
         var issueUpdateDetails = new IssueUpdateDetails();
         var transition = new IssueTransition();
         transition.setId(transitionId);
         issueUpdateDetails.setTransition(transition);
         if (fields != null) {
-            for (Map.Entry<String, Object> entry : fields.entrySet()) {
-                issueUpdateDetails.putFieldsItem(entry.getKey(), entry.getValue());
-            }
+            issueUpdateDetails.fields(Helper.getMapFromJsonString(fields));
         }
-        return new IssuesApi(apiClient).doTransition(issueIdOrKey, issueUpdateDetails).toString();
+        var ret = new IssuesApi(apiClient).doTransition(issueIdOrKey, issueUpdateDetails);
+        return ret == null ? "Transitioned" : ret.toString();
     }
 }
