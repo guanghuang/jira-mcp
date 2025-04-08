@@ -76,8 +76,8 @@ public class JiraPlatformMCPService {
         return new IssuesApi(apiClient).getIssue(issueIdOrKey, fields, fieldsByKeys, expand, properties, updateHistory, false);
     }
 
-    @Tool(name = "search_issue_by_jql", description = "Search for issues using JQL enhanced search")
-    public SearchAndReconcileResults searchIssueByJql(@ToolArg(required = false, description = """
+    @Tool(name = "search_issues_by_jql", description = "Search for issues using JQL enhanced search")
+    public SearchAndReconcileResults searchIssuesByJql(@ToolArg(required = false, description = """
         A JQL (JIRA Query Language) expression to search for issues.
         JQL fields documentation: https://support.atlassian.com/jira-software-cloud/docs/jql-fields/
         Examples:
@@ -126,8 +126,8 @@ public class JiraPlatformMCPService {
         return new MyselfApi(apiClient).getCurrentUser(null);
     }
 
-    @Tool(name = "search_user", description = "Search for users by name or email")
-    public List<User> SearchUser(@ToolArg(description = "The name or email of the user to search for. The string can match the prefix of the attribute's value.") String nameOrEmail) throws ApiException {
+    @Tool(name = "search_users", description = "Search for users by name or email")
+    public List<User> SearchUsers(@ToolArg(description = "The name or email of the user to search for. The string can match the prefix of the attribute's value.") String nameOrEmail) throws ApiException {
         return new UserSearchApi(apiClient).findUsers(nameOrEmail, null, null, null, null, null);
     }
 
