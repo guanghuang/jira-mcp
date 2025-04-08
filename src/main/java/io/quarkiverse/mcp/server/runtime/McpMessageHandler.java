@@ -75,6 +75,7 @@ public class McpMessageHandler {
         if (!INITIALIZE.equals(method)) {
             // In the dev mode, if an MCP client attempts to reconnect an SSE connection but does not reinitialize propertly,
             // we could perform a "dummy" initialization
+            // temporary disable hard INITIALIZE method check e.g. like cursor ide timeout.
 //            if (LaunchMode.current() == LaunchMode.DEVELOPMENT && config.devMode().dummyInit()) {
                 InitialRequest dummy = new InitialRequest(new Implementation("dummy", "1"), DEFAULT_PROTOCOL_VERSION,
                         List.of());

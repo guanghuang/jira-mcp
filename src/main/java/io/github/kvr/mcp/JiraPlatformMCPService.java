@@ -4,7 +4,6 @@ import java.util.HashMap;
 import java.util.List;
 
 import com.atlassian.jira.invoker.ApiClient;
-import com.atlassian.jira.invoker.ApiException;
 import com.atlassian.jira.platform.api.IssueCommentsApi;
 import com.atlassian.jira.platform.api.IssueFieldsApi;
 import com.atlassian.jira.platform.api.IssueSearchApi;
@@ -40,6 +39,16 @@ public class JiraPlatformMCPService {
         this.apiClient = apiClient;
     }
 
+    /**
+     * Get an issue 
+     * @param issueIdOrKey The ID or key of the issue.
+     * @param fields A list of fields to return for the issue.
+     * @param fieldsByKeys Whether fields in fields are referenced by keys rather than IDs.
+     * @param expand Expand options.
+     * @param properties A list of issue properties to return for the issue.
+     * @param updateHistory Whether the project in which the issue is created is added to the user's Recently viewed project list, as shown under Projects in Jira. This also populates the JQL issues search lastViewed field.
+     * @return The issue details.
+     */
     @Tool(name = "get_issue", description = """
         Returns the details for an issue.
         The issue is identified by its ID or key, however, if the identifier doesn't match an issue, a case-insensitive search and check for moved issues is performed. If a matching issue is found its details are returned, a 302 or other redirect is not returned. The issue key returned in the response is the key of the issue found.""")
@@ -72,11 +81,19 @@ public class JiraPlatformMCPService {
         *all,-prop1 Returns all properties except prop1.
         prop1,prop2 Returns prop1 and prop2 properties.""") List<String> properties,
         @ToolArg(required = false, description = "Whether the project in which the issue is created is added to the user's Recently viewed project list, as shown under Projects in Jira. This also populates the JQL issues search lastViewed field.") Boolean updateHistory
-        ) throws ApiException {
-        return new IssuesApi(apiClient).getIssue(issueIdOrKey, fields, fieldsByKeys, expand, properties, updateHistory, false);
+        ) {
+        return ExceptionFunction.DoInException(() -> new IssuesApi(apiClient).getIssue(issueIdOrKey, fields, fieldsByKeys, expand, properties, updateHistory, false), "get_issue");
     }
 
-    @Tool(name = "search_issues_by_jql", description = "Search for issues using JQL enhanced search")
+    /**
+     * Search for issues using JQL enhanced search
+     * @param jql A JQL (JIRA Query Language) expression to search for issues.
+     * @param maxResults The maximum number of items to return per page. To manage page size, API may return fewer items per page where a large number of fields are requested. The greatest number of items returned per page is achieved when requesting id or key only. It returns max 5000 issues. Default is 50 if not provided.
+     * @param fields A list of fields to return for each issue, use it to retrieve a subset of fields. This parameter accepts a comma-separated list.
+     * @param expand Expand options.
+     * @param properties A list of issue properties to return for the issue.
+     * @return A list of issues that match the JQL query.
+     */
     public SearchAndReconcileResults searchIssuesByJql(@ToolArg(required = false, description = """
         A JQL (JIRA Query Language) expression to search for issues.
         JQL fields documentation: https://support.atlassian.com/jira-software-cloud/docs/jql-fields/
@@ -111,31 +128,56 @@ public class JiraPlatformMCPService {
         changelog Returns a list of recent updates to an issue, sorted by date, starting from the most recent.
         """) String expand,
         @ToolArg(required = false, description = "A list of up to 5 issue properties to include in the results. This parameter accepts a comma-separated list.") List<String> properties,
-        @ToolArg(required = false, description = "Whether fields in fields are referenced by keys rather than IDs. This parameter is useful where fields have been added by a connect app and a field's key may differ from its ID.") Boolean fieldsByKeys) throws ApiException {
-        return new IssueSearchApi(apiClient).searchAndReconsileIssuesUsingJql(jql, null, maxResults, fields, expand, properties, fieldsByKeys, false, null);
+        @ToolArg(required = false, description = "Whether fields in fields are referenced by keys rather than IDs. This parameter is useful where fields have been added by a connect app and a field's key may differ from its ID.") Boolean fieldsByKeys) {
+        return ExceptionFunction.DoInException(() -> new IssueSearchApi(apiClient).searchAndReconsileIssuesUsingJql(jql, null, maxResults, fields, expand, properties, fieldsByKeys, false, null), "search_issues_by_jql");
     }
 
-
+    /**
+     * Get all jira issue fields
+     * @return A list of all jira issue fields.
+     */
     @Tool(name = "get_issue_fields", description = "Get all jira issue fields")
-    public List<FieldDetails> getIssueFields() throws ApiException {        
-        return new IssueFieldsApi(apiClient).getFields();
+    public List<FieldDetails> getIssueFields() {        
+        return ExceptionFunction.DoInException(() -> new IssueFieldsApi(apiClient).getFields(), "get_issue_fields");
     }
 
+    /**
+     * Get current user info
+     * @return The current user info.
+     */
     @Tool(name = "get_myself_info", description = "Get current user info")
-    public User getMyselfInfo() throws ApiException {
-        return new MyselfApi(apiClient).getCurrentUser(null);
+    public User getMyselfInfo() {
+        return ExceptionFunction.DoInException(() -> new MyselfApi(apiClient).getCurrentUser(null), "get_myself_info");
     }
 
+    /**
+     * Search for users by name or email
+     * @param nameOrEmail The name or email of the user to search for. The string can match the prefix of the attribute's value.
+     * @return A list of users that match the name or email.
+     */
     @Tool(name = "search_users", description = "Search for users by name or email")
-    public List<User> SearchUsers(@ToolArg(description = "The name or email of the user to search for. The string can match the prefix of the attribute's value.") String nameOrEmail) throws ApiException {
-        return new UserSearchApi(apiClient).findUsers(nameOrEmail, null, null, null, null, null);
+    public List<User> SearchUsers(@ToolArg(description = "The name or email of the user to search for. The string can match the prefix of the attribute's value.") String nameOrEmail) {
+        return ExceptionFunction.DoInException(() -> new UserSearchApi(apiClient).findUsers(nameOrEmail, null, null, null, null, null), "search_users");
     }
 
+    /**
+     * Get either all transitions or a transition that can be performed by the user on an issue, based on the issue's status
+     * @param issueIdOrKey The ID or key of the issue.
+     * @return A list of transitions that can be performed by the user on the issue.
+     */
     @Tool(name = "get_issue_transitions", description = "Get either all transitions or a transition that can be performed by the user on an issue, based on the issue's status")
-    public Transitions getIssueTransitions(@ToolArg(description = "The ID or key of the issue.") String issueIdOrKey) throws ApiException {
-        return new IssuesApi(apiClient).getTransitions(issueIdOrKey, null, null, null, null, null);
+    public Transitions getIssueTransitions(@ToolArg(description = "The ID or key of the issue.") String issueIdOrKey) {
+        return ExceptionFunction.DoInException(() -> new IssuesApi(apiClient).getTransitions(issueIdOrKey, null, null, null, null, null), "get_issue_transitions");
     }
 
+    /**
+     * Create an jira issue
+     * @param projectKeyOrId The project key of the issue.
+     * @param issueTypeNameOrId The issue type name or ID of the issue.
+     * @param summary The summary of the issue.
+     * @param assigneeId The assignee Id of the issue.
+     * @return The created issue.
+     */
     @Tool(name = "create_issue", description = "Create an jira issue")
     public CreatedIssue createIssue(@ToolArg(description = "The project key of the issue.") String projectKeyOrId,
         @ToolArg(description = "The issue type name or ID of the issue.") String issueTypeNameOrId,
@@ -148,49 +190,58 @@ public class JiraPlatformMCPService {
                                     @ToolArg(required = false, description = """
             List of properties to update.
             Example: [{"key": "key1", "value":"value1"}, {"key": "key2", "value": "value2"}]""") List<EntityProperty> properties
-        ) throws ApiException {
-        IssueUpdateDetails issueUpdateDetails = new IssueUpdateDetails();
-        if (projectKeyOrId != null) {
-            if (projectKeyOrId.matches("-?\\d+(\\.\\d+)?")) {
-                issueUpdateDetails.putFieldsItem("project", new HashMap<String, Object>() {{
-                    put("id", projectKeyOrId);
-                }});
-            } else {
-                issueUpdateDetails.putFieldsItem("project", new HashMap<String, Object>() {{
-                    put("key", projectKeyOrId);
+        ) {
+        return ExceptionFunction.DoInException(() -> {
+            IssueUpdateDetails issueUpdateDetails = new IssueUpdateDetails();
+            if (projectKeyOrId != null) {
+                if (projectKeyOrId.matches("-?\\d+(\\.\\d+)?")) {
+                    issueUpdateDetails.putFieldsItem("project", new HashMap<String, Object>() {{
+                        put("id", projectKeyOrId);
+                    }});
+                } else {
+                    issueUpdateDetails.putFieldsItem("project", new HashMap<String, Object>() {{
+                        put("key", projectKeyOrId);
+                    }});
+                }
+            }
+            if (issueTypeNameOrId != null) {
+                if (issueTypeNameOrId.matches("-?\\d+(\\.\\d+)?")) {
+                    issueUpdateDetails.putFieldsItem("issuetype", new HashMap<String, Object>() {{
+                        put("id", issueTypeNameOrId);
+                    }});
+                } else {
+                    issueUpdateDetails.putFieldsItem("issuetype", new HashMap<String, Object>() {{
+                        put("name", issueTypeNameOrId);
+                    }});
+                }
+            }
+            if (fields != null) {
+                issueUpdateDetails.fields(Helper.getMapFromJsonString(fields));
+            }
+            if (assigneeId != null) {
+                issueUpdateDetails.putFieldsItem("assignee", new HashMap<String, Object>() {{
+                    put("id", assigneeId);
                 }});
             }
-        }
-        if (issueTypeNameOrId != null) {
-            if (issueTypeNameOrId.matches("-?\\d+(\\.\\d+)?")) {
-                issueUpdateDetails.putFieldsItem("issuetype", new HashMap<String, Object>() {{
-                    put("id", issueTypeNameOrId);
-                }});
-            } else {
-                issueUpdateDetails.putFieldsItem("issuetype", new HashMap<String, Object>() {{
-                    put("name", issueTypeNameOrId);
-                }});
+            if (summary != null) {
+                issueUpdateDetails.putFieldsItem("summary", summary);
             }
-        }
-        if (fields != null) {
-            issueUpdateDetails.fields(Helper.getMapFromJsonString(fields));
-        }
-        if (assigneeId != null) {
-            issueUpdateDetails.putFieldsItem("assignee", new HashMap<String, Object>() {{
-                put("id", assigneeId);
-            }});
-        }
-        if (summary != null) {
-            issueUpdateDetails.putFieldsItem("summary", summary);
-        }
-        if (description != null) {
-            issueUpdateDetails.putFieldsItem("description", description);
-        }
+            if (description != null) {
+                issueUpdateDetails.putFieldsItem("description", description);
+            }
 
 
-        return new IssuesApi(apiClient).createIssue(issueUpdateDetails, null);  
+            return new IssuesApi(apiClient).createIssue(issueUpdateDetails, null);  
+        }, "create_issue");
     }
 
+    /**
+     * Update an jira issue
+     * @param issueIdOrKey The ID or key of the issue.
+     * @param summary The summary of the issue.
+     * @param description The description of the issue.
+     * @return A message indicating that the issue has been updated.
+     */
     @Tool(name = "update_issue", description = "Update an jira issue")
     public String updateIssue(@ToolArg(description = "The ID or key of the issue.") String issueIdOrKey,
         @ToolArg(required = false, description = "The summary of the issue.") String summary,
@@ -201,9 +252,10 @@ public class JiraPlatformMCPService {
         @ToolArg(required = false, description = """
             List of properties to update.
             Example: [{"key": "key1", "value":"value1"}, {"key": "key2", "value": "value2"}]""") List<EntityProperty> properties
-        ) throws ApiException {
-        IssueUpdateDetails issueUpdateDetails = new IssueUpdateDetails();
-        if (fields != null) {
+        ) {
+        return ExceptionFunction.DoInException(() -> {
+            IssueUpdateDetails issueUpdateDetails = new IssueUpdateDetails();
+            if (fields != null) {
             issueUpdateDetails.fields(Helper.getMapFromJsonString(fields));
         }
         if (summary != null) {
@@ -213,40 +265,64 @@ public class JiraPlatformMCPService {
             issueUpdateDetails.putFieldsItem("description", description);
         }
 
-        var ret = new IssuesApi(apiClient).editIssue(issueIdOrKey, issueUpdateDetails, null, null, null, null, null);
-        return ret == null ? "Issue updated" : ret.toString();
+            var ret = new IssuesApi(apiClient).editIssue(issueIdOrKey, issueUpdateDetails, null, null, null, null, null);
+            return ret == null ? "Issue updated" : ret.toString();
+        }, "update_issue");
     }
 
+    /**
+     * Delete an jira issue
+     * @param issueIdOrKey The ID or key of the issue.
+     * @return A message indicating that the issue has been deleted.
+     */
     @Tool(name = "delete_issue", description = "Delete an jira issue")
-    public String deleteIssue(@ToolArg(description = "The ID or key of the issue.") String issueIdOrKey) throws ApiException {
-        new IssuesApi(apiClient).deleteIssue(issueIdOrKey, null);
-        return "Issue deleted";
+    public String deleteIssue(@ToolArg(description = "The ID or key of the issue.") String issueIdOrKey) {
+        return ExceptionFunction.DoInException(() -> {
+            new IssuesApi(apiClient).deleteIssue(issueIdOrKey, null);
+            return "Issue deleted";
+        }, "delete_issue");
     }
 
+    /**
+     * Add a comment to an jira issue
+     * @param issueIdOrKey The ID or key of the issue.
+     * @param commentBody The comment to add.
+     * @return A message indicating that the comment has been added.
+     */
     @Tool(name = "add_jira_comment", description = "Add a comment to an jira issue")
     public String addComment(@ToolArg(description = "The ID or key of the issue.") String issueIdOrKey,
-        @ToolArg(description = "The comment to add.") String commentBody) throws ApiException {
+        @ToolArg(description = "The comment to add.") String commentBody) {
         var comment = new Comment();
         comment.setBody(commentBody);
-        new IssueCommentsApi(apiClient).addComment(issueIdOrKey, comment, null);
-        return "Comment added";
+        return ExceptionFunction.DoInException(() -> {
+            new IssueCommentsApi(apiClient).addComment(issueIdOrKey, comment, null);
+            return "Comment added";
+        }, "add_jira_comment");
     }
 
+    /**
+     * Transition an jira issue
+     * @param issueIdOrKey The ID or key of the issue.
+     * @param transitionId The transition Id to perform.
+     * @return A message indicating that the issue has been transitioned.
+     */
     @Tool(name = "transition_jira_issue", description = "Transition an jira issue")
     public String transitionIssue(@ToolArg(description = "The ID or key of the issue.") String issueIdOrKey,
         @ToolArg(description = "The transition Id to perform.") String transitionId,
                                   @ToolArg(required = false, description = """
             A valid JSON object of fields to update as a string. For assignee, use key "id"
             Example: {"priority": {"name": "High"}, "assignee": {"id": "2342423423"}, "customfield_10010": 1,  "summary": "Completed orders still displaying in pending"}""") String fields
-                                  ) throws ApiException {
-        var issueUpdateDetails = new IssueUpdateDetails();
-        var transition = new IssueTransition();
-        transition.setId(transitionId);
-        issueUpdateDetails.setTransition(transition);
-        if (fields != null) {
+                                  ) {
+        return ExceptionFunction.DoInException(() -> {
+            var issueUpdateDetails = new IssueUpdateDetails();
+            var transition = new IssueTransition();
+            transition.setId(transitionId);
+            issueUpdateDetails.setTransition(transition);
+            if (fields != null) {
             issueUpdateDetails.fields(Helper.getMapFromJsonString(fields));
-        }
-        var ret = new IssuesApi(apiClient).doTransition(issueIdOrKey, issueUpdateDetails);
-        return ret == null ? "Transitioned" : ret.toString();
+            }
+            var ret = new IssuesApi(apiClient).doTransition(issueIdOrKey, issueUpdateDetails);
+            return ret == null ? "Transitioned" : ret.toString();
+        }, "transition_jira_issue");
     }
 }
