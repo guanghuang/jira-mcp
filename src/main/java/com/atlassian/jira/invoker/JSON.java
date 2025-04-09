@@ -35,6 +35,7 @@ import java.text.ParsePosition;
 import java.time.LocalDate;
 import java.time.OffsetDateTime;
 import java.time.format.DateTimeFormatter;
+import java.time.format.DateTimeParseException;
 import java.util.Date;
 import java.util.Locale;
 import java.util.Map;
@@ -1415,9 +1416,19 @@ public class JSON {
                 default:
                     String date = in.nextString();
                     if (date.endsWith("+0000")) {
-                        date = date.substring(0, date.length()-5) + "Z";
+                        date = date.substring(0, date.length() - 5) + "Z";
                     }
-                    return OffsetDateTime.parse(date, formatter);
+                    try {
+                        return OffsetDateTime.parse(date, formatter);
+                    } catch (DateTimeParseException e) {
+                        // possible 2025-04-09T08:28:57.097-0700 from jira
+                        date = date.replaceAll("([+-]\\d{2})(\\d{2})$", "$1:$2");
+                        try {
+                            return OffsetDateTime.parse(date);
+                        } catch (DateTimeParseException e1) {
+                            return null;
+                        }
+                    }
             }
         }
     }
