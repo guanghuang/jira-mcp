@@ -289,15 +289,42 @@ public class JiraPlatformMCPService {
      * @param commentBody The comment to add.
      * @return A message indicating that the comment has been added.
      */
-    @Tool(name = "add_jira_comment", description = "Add a comment to an jira issue")
-    public String addComment(@ToolArg(description = "The ID or key of the issue.") String issueIdOrKey,
-        @ToolArg(description = "The comment to add.") String commentBody) {
+    @Tool(name = "add_jira_comment", description = "Add comments to an jira issue")
+    public Comment addComment(@ToolArg(description = "The ID or key of the issue.") String issueIdOrKey,
+        @ToolArg(description = """
+                The comment to add.
+                The comment is the json of the `Atlassian Document Format.` from https://developer.atlassian.com/cloud/jira/platform/apis/document/structure/
+                Here is the simple sample of comment `Hello, world` for mainly `text type`:
+                ```
+                    {
+                      "version": 1,
+                      "type": "doc",
+                      "content": [
+                        {
+                          "type": "paragraph",
+                          "content": [
+                            {
+                              "type": "text",
+                              "text": "Hello "
+                            },
+                            {
+                              "type": "text",
+                              "text": "world",
+                              "marks": [
+                                {
+                                  "type": "strong"
+                                }
+                              ]
+                            }
+                          ]
+                        }
+                      ]
+                    }
+                ```
+                """) String commentBody) {
         var comment = new Comment();
-        comment.setBody(commentBody);
-        return ExceptionFunction.DoInException(() -> {
-            new IssueCommentsApi(apiClient).addComment(issueIdOrKey, comment, null);
-            return "Comment added";
-        }, "add_jira_comment");
+        comment.setBody(Helper.getMapFromJsonString(commentBody));
+        return ExceptionFunction.DoInException(() -> new IssueCommentsApi(apiClient).addComment(issueIdOrKey, comment, null), "add_jira_comment");
     }
 
     /**
