@@ -94,6 +94,10 @@ public class JiraPlatformMCPService {
      * @param properties A list of issue properties to return for the issue.
      * @return A list of issues that match the JQL query.
      */
+    @Tool(name = "search_issues_by_jql", description = """
+        Search for issues using Jira Query Language(JQL) enhanced search.
+        The JQL query is used to search for issues in Jira. The query can include various fields and operators to filter the results.
+        """)
     public SearchAndReconcileResults searchIssuesByJql(@ToolArg(required = false, description = """
         A JQL (JIRA Query Language) expression to search for issues.
         JQL fields documentation: https://support.atlassian.com/jira-software-cloud/docs/jql-fields/
