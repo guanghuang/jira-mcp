@@ -10,9 +10,9 @@ import org.eclipse.microprofile.config.inject.ConfigProperty;
  */
 public class JiraMCPApplication {
     @Produces
-    public ApiClient getApiClient(@ConfigProperty(name = "jira.url") String basePath,
-                                   @ConfigProperty(name = "jira.username") String username,
-                                   @ConfigProperty(name = "jira.pat") String pat) {
+    public ApiClient getApiClient(@ConfigProperty(name = "atlassian.url") String basePath,
+                                   @ConfigProperty(name = "atlassian.username") String username,
+                                   @ConfigProperty(name = "atlassian.pat") String pat) {
         ApiClient apiClient = new ApiClient();
         apiClient.setBasePath(basePath);
 
