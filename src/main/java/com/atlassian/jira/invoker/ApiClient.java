@@ -13,6 +13,8 @@
 
 package com.atlassian.jira.invoker;
 
+import io.github.kvr.mcp.Helper;
+import io.github.kvr.mcp.MultipartFile;
 import okhttp3.*;
 import okhttp3.internal.http.HttpMethod;
 import okhttp3.internal.tls.OkHostnameVerifier;
@@ -22,7 +24,6 @@ import okio.Buffer;
 import okio.BufferedSink;
 import okio.Okio;
 import org.apache.oltu.oauth2.client.request.OAuthClientRequest.TokenRequestBuilder;
-import org.apache.oltu.oauth2.common.message.types.GrantType;
 
 import javax.net.ssl.*;
 import java.io.File;
@@ -49,13 +50,11 @@ import java.time.format.DateTimeFormatter;
 import java.util.*;
 import java.util.Map.Entry;
 import java.util.concurrent.TimeUnit;
-import java.util.function.Supplier;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
 import com.atlassian.jira.invoker.auth.Authentication;
 import com.atlassian.jira.invoker.auth.HttpBasicAuth;
-import com.atlassian.jira.invoker.auth.HttpBearerAuth;
 import com.atlassian.jira.invoker.auth.ApiKeyAuth;
 import com.atlassian.jira.invoker.auth.OAuth;
 import com.atlassian.jira.invoker.auth.RetryingOAuth;
@@ -206,7 +205,7 @@ public class ApiClient {
         for (Interceptor interceptor: interceptors) {
             builder.addInterceptor(interceptor);
         }
-
+//        builder.addInterceptor(new LoggingInterceptor());
         httpClient = builder.build();
     }
 
@@ -1491,7 +1490,9 @@ public class ApiClient {
     public RequestBody buildRequestBodyMultipart(Map<String, Object> formParams) {
         MultipartBody.Builder mpBuilder = new MultipartBody.Builder().setType(MultipartBody.FORM);
         for (Entry<String, Object> param : formParams.entrySet()) {
-            if (param.getValue() instanceof File) {
+            if ("files".equals(param.getKey())) {
+                Helper.buildMultipartHeader(mpBuilder, (List<MultipartFile>) param.getValue());
+            } else if (param.getValue() instanceof File) {
                 File file = (File) param.getValue();
                 addPartToMultiPartBuilder(mpBuilder, param.getKey(), file);
             } else if (param.getValue() instanceof List) {

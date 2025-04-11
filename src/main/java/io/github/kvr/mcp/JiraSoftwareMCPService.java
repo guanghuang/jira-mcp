@@ -175,5 +175,4 @@ public class JiraSoftwareMCPService {
             return "Issues moved to epic";
         }, "move_issues_to_epic");
     }
-
 }
