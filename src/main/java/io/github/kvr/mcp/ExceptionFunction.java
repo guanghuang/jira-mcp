@@ -14,7 +14,7 @@ public interface ExceptionFunction<T> {
 
     static <T> T DoInException(ExceptionFunction<T> f, String toolInfo) {
         try {
-            return f.execute();
+            return EmptyValueCleaner.removeEmptyValues(f.execute());
         } catch (ApiException e) {
             throw new ToolCallException("Failed to call " + toolInfo + ": " + e.getMessage()
                     + "\n status code:" + e.getCode(), e);
