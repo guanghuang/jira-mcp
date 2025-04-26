@@ -65,12 +65,10 @@ public class JiraSoftwareMCPService {
     @Tool(name = "get_issues_from_board", description = "Get issues from a board")
     public SearchResults getIssuesFromBoard(@ToolArg(description = "The ID of the jira board. Must be number.") Long boardId,
         @ToolArg(required = false, description = "Filters results using a JQL query. If you define an order in your JQL query, it will override the default order of the returned issues. Note that username and userkey can't be used as search terms for this parameter due to privacy reasons. Use accountId instead.") String jql,
-        @ToolArg(required = false, description = "A list of fields to return for each issue. This parameter accepts a comma-separated list. Allowed values: *all, *navigable, summary, comment, renderedFields, names, schema, transitions, editmeta, changelog, versionedRepresentations") List<Object> fields,
+        @ToolArg(required = false, description = "A list of fields to return for each issue. This parameter accepts a comma-separated list. Allowed values: *all, *navigable, summary, comment, renderedFields, names, schema, transitions, editmeta, changelog, versionedRepresentations") List<String> fields,
         @ToolArg(required = false, description = "The maximum number of issues to return. Default is 50.") Integer maxResults,
         @ToolArg(required = false, description = "The starting index of the returned issues. Must be number. Base index: 0. Default is 0.") Long startAt) {
-        return ExceptionFunction.DoInException(() -> {
-            return new BoardApi(apiClient).getIssuesForBoard(boardId, startAt, maxResults, jql, null, fields, null);
-        }, "get_issues_from_board");
+        return ExceptionFunction.DoInException(() -> new BoardApi(apiClient).getIssuesForBoard(boardId, startAt, maxResults, jql, null, fields == null ? null : (List<Object>)(List<?>)fields, null), "get_issues_from_board");
     }
 
     /**
@@ -127,11 +125,11 @@ public class JiraSoftwareMCPService {
     public SearchResults getIssuesFromSprint(@ToolArg(description = "The ID of the jira board. Must be number.") Long boardId,
         @ToolArg(description = "The ID of the jira sprint. Must be number.") Long sprintId,
         @ToolArg(required = false, description = "Filters results using a JQL query. If you define an order in your JQL query, it will override the default order of the returned issues. Note that username and userkey can't be used as search terms for this parameter due to privacy reasons. Use accountId instead.") String jql,
-        @ToolArg(required = false, description = "A list of fields to return for each issue. This parameter accepts a comma-separated list. Allowed values: *all, *navigable, summary, comment, renderedFields, names, schema, transitions, editmeta, changelog, versionedRepresentations") List<Object> fields,
+        @ToolArg(required = false, description = "A list of fields to return for each issue. This parameter accepts a comma-separated list. Allowed values: *all, *navigable, summary, comment, renderedFields, names, schema, transitions, editmeta, changelog, versionedRepresentations") List<String> fields,
         @ToolArg(required = false, description = "The maximum number of issues to return. Default is 50.") Integer maxResults,
         @ToolArg(required = false, description = "The starting index of the returned issues. Must be number. Base index: 0. Default is 0.") Long startAt) {
         return ExceptionFunction.DoInException(() -> {
-            return new BoardApi(apiClient).getBoardIssuesForSprint(boardId, sprintId, startAt, maxResults, jql, null, fields, null);
+            return new BoardApi(apiClient).getBoardIssuesForSprint(boardId, sprintId, startAt, maxResults, jql, null, fields == null ? null : (List<Object>)(List<?>) fields, null);
         }, "get_issues_from_sprint");
     }
 
@@ -149,10 +147,10 @@ public class JiraSoftwareMCPService {
     public SearchResults getIssuesFromEpic(@ToolArg(description = "The ID of the jira board. Must be number.") Long boardId,
         @ToolArg(description = "The ID of the jira epic. Must be number") Long epicId,
         @ToolArg(required = false, description = "Filters results using a JQL query. If you define an order in your JQL query, it will override the default order of the returned issues. Note that username and userkey can't be used as search terms for this parameter due to privacy reasons. Use accountId instead.") String jql,
-        @ToolArg(required = false, description = "A list of fields to return for each issue. This parameter accepts a comma-separated list. Allowed values: *all, *navigable, summary, comment, renderedFields, names, schema, transitions, editmeta, changelog, versionedRepresentations") List<Object> fields,
+        @ToolArg(required = false, description = "A list of fields to return for each issue. This parameter accepts a comma-separated list. Allowed values: *all, *navigable, summary, comment, renderedFields, names, schema, transitions, editmeta, changelog, versionedRepresentations") List<String> fields,
         @ToolArg(required = false, description = "The maximum number of issues to return. Default is 50.") Integer maxResults,
         @ToolArg(required = false, description = "The starting index of the returned issues. Must be number. Base index: 0. Default is 0.") Long startAt) {
-        return ExceptionFunction.DoInException(() -> new BoardApi(apiClient).getBoardIssuesForEpic(boardId, epicId, startAt, maxResults, jql, null, fields, null), "get_issues_from_epic");
+        return ExceptionFunction.DoInException(() -> new BoardApi(apiClient).getBoardIssuesForEpic(boardId, epicId, startAt, maxResults, jql, null, fields == null ? null : (List<Object>)(List<?>)fields, null), "get_issues_from_epic");
     }
 
     /**
