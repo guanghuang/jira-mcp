@@ -140,17 +140,17 @@ To use the Docker version with Claude Desktop, add this to your `claude_desktop_
         "run",
         "--rm",
         "-e",
-        "atlassian.url=https://your-company.atlassian.net"
+        "atlassian.url=https://your-company.atlassian.net",
         "-e",
-        "atlassian.username=your-jira-email"
+        "atlassian.username=your-jira-email",
         "-e",
-        "atlassian.pat=your-jira-pat"       
+        "atlassian.pat=your-jira-pat",       
         "-e",
         "quarkus.log.console.enable=false",
         "-e",
         "quarkus.log.console.stderr=false",
         "-i",
-        "guang1/jira-mcp:latest",
+        "guang1/jira-mcp:latest"
       ]
     }
   }
@@ -168,13 +168,13 @@ To use the Docker version with Claude Desktop, add this to your `claude_desktop_
         "--rm",
         "--env-file=atlassian.conf",
         "-e",
-        "quarkus.mcp.server.stdio.enabled=true"
+        "quarkus.mcp.server.stdio.enabled=true",
         "-e",
         "quarkus.log.console.enable=false",
         "-e",
         "quarkus.log.console.stderr=false",
         "-i",
-        "guang1/jira-mcp:latest",
+        "guang1/jira-mcp:latest"
       ]
     }
   }
@@ -209,20 +209,30 @@ To generate a Personal Access Token for Jira:
 - Use network security rules to restrict access to the MCP server
 - Be cautious about which operations you allow LLMs to perform
 
-## Using with LLMs
-
-This MCP server provides a standardized API that Large Language Models can use to interact with your Jira instance:
-
-1. Configure the LLM to connect to the MCP server endpoint
-2. Define the capabilities you want to allow the LLM to use
-3. The LLM can now perform Jira operations through the MCP server
+## Example Use Cases
 
 ## Example Use Cases
 
-- Automate issue creation and updates based on natural language requests
-- Generate Jira reports and summaries
-- Help plan sprints and manage epics
-- Allow team members to interact with Jira using conversational language
+- **Set a Default Ticket Prefix**  
+  Define a default ticket prefix in your rules (e.g., `MyProj-`). This allows you to reference tickets in chat by number only (e.g., `1234` instead of `MyProj-1234`).
+
+- **Configure Personal Jira Account ID**  
+  Specify your Jira account ID in the rules to avoid repeated API calls (such as `get_myself_info`) for every operation.
+
+- **Customize Jira Fields**  
+  Set custom fields (e.g., story points, developer, etc.) in your rules to prevent the AI from calling `get_issue_fields` each time.
+
+- **Automate Issue Management**  
+  Create and update Jira issues automatically based on natural language requests.
+
+- **Generate Reports and Summaries**  
+  Produce Jira reports and summaries on demand.
+
+- **Sprint Planning and Epic Management**  
+  Assist with sprint planning and epic management tasks.
+
+- **Conversational Jira Interaction**  
+  Enable team members to interact with Jira using natural, conversational language.
 
 ## Troubleshooting
 
