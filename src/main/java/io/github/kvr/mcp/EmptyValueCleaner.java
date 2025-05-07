@@ -11,7 +11,7 @@ import java.util.*;
  * It will also remove all empty values from all custom objects.
  */
 public class EmptyValueCleaner {
-    public static boolean DeepCleanCollection = false;
+    public static boolean DeepCleanCollection = true;
 
     @SuppressWarnings("unchecked")
     public static <T> T removeEmptyValues(T obj) {
@@ -91,7 +91,7 @@ public class EmptyValueCleaner {
     }
 
     private static Object handleCustomObject(Object obj, Set<Object> visited){
-        Field[] fields = obj.getClass().getDeclaredFields();
+        Field[] fields = getAllFields(obj.getClass()).toArray(new Field[0]);
         boolean allFieldsEmpty = true;
         try{
             for(Field field : fields){
@@ -106,7 +106,6 @@ public class EmptyValueCleaner {
                 if(fieldValue != null){
                     field.set(obj, fieldValue);
                     allFieldsEmpty = false;
-                    break;
                 } else {
                     field.set(obj, null);
                 }
@@ -116,5 +115,14 @@ public class EmptyValueCleaner {
         }
 
         return allFieldsEmpty ? null : obj;
+    }
+
+    private static List<Field> getAllFields(Class<?> clazz) {
+        List<Field> fields = new ArrayList<>();
+        while (clazz != null && clazz != Object.class) {
+            Collections.addAll(fields, clazz.getDeclaredFields());
+            clazz = clazz.getSuperclass();
+        }
+        return fields;
     }
 }

@@ -207,7 +207,7 @@ public class JiraPlatformMCPService {
             """) String description,
         @ToolArg(required = false, description = """
             A valid JSON object of fields to update as a string.
-            Example: {"priority": {"name": "High"}, "assignee": {"id": "2342423423"}, "customfield_10010": 1,  "summary": "Completed orders still displaying in pending"}""") String fields,
+            YExample: {"priority": {"name": "High"}, "assignee": {"id": "2342423423"}, "customfield_10010": 1, "customfield_10048": {value:"value", id:"123"},  "summary": "Completed orders still displaying in pending"}""") String fields,
         @ToolArg(required = false, description = """
             List of properties to update.
             Example: [{"key": "key1", "value":"value1"}, {"key": "key2", "value": "value2"}]""") List<EntityProperty> properties,
