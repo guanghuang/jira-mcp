@@ -162,7 +162,19 @@ public class JiraPlatformMCPService {
     }
 
     /**
-     * Create an jira issue
+     * Get project versions in a project.
+     * @param projectIdOrKey The ID or key of the project.
+     * @param expand Whether to expand the fields in the response. This parameter accepts a comma-separated list. Expand options include: names Returns the display name of each field. schema Returns the schema describing a field type.
+     * @return A list of all projects.
+     */
+    @Tool(name = "get_project_versions", description = "Returns all versions in a project. The response is not paginated.")
+    public List<Version> getProjectVersions(@ToolArg(description = "The ID or key of the project.") String projectIdOrKey,
+                                            @ToolArg(required = false, description = "Use expand to include additional information in the response. This parameter accepts operations, which returns actions that can be performed on the version.") String expand) {
+        return ExceptionFunction.DoInException(() -> new ProjectVersionsApi(apiClient).getProjectVersions(projectIdOrKey, expand), "get_project_versions");
+    }
+
+    /**
+     * Create a jira issue
      * @param projectKeyOrId The project key of the issue.
      * @param issueTypeNameOrId The issue type name or ID of the issue.
      * @param summary The summary of the issue.
