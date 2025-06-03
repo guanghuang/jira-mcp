@@ -31,6 +31,7 @@ The MCP server supports the following Jira operations:
 - `get_issue`: Retrieve details of a specific issue
 - `get_issue_fields`: Get all available fields for issues
 - `get_issue_transitions`: Get possible status transitions for an issue
+- `get_project_versions`: Get all versions in a project with pagination support
 - `search_issue_by_jql`: Search for issues using JQL (Jira Query Language)
 - `transition_jira_issue`: Change the status of an issue
 - `update_issue`: Update the details of an existing issue

@@ -162,15 +162,39 @@ public class JiraPlatformMCPService {
     }
 
     /**
-     * Get project versions in a project.
+     * Get project versions paginated
      * @param projectIdOrKey The ID or key of the project.
-     * @param expand Whether to expand the fields in the response. This parameter accepts a comma-separated list. Expand options include: names Returns the display name of each field. schema Returns the schema describing a field type.
-     * @return A list of all projects.
+     * @param startAt The starting index of the returned versions. Base index: 0.
+     * @param maxResults The maximum number of versions to return per page.
+     * @param orderBy Order the results by a field. Accepts: description, name, releaseDate, sequence, startDate.
+     * @param query Filter the results using a literal string. Versions with matching name or description are returned (case insensitive).
+     * @param status A list of status values used to filter the results by version status. This parameter accepts a comma-separated list. The status values are released, unreleased, and archived.
+     * @param expand Use expand to include additional information in the response. This parameter accepts a comma-separated list. Expand options include: issuesstatus, operations, driver, approvers.
+     * @return A paginated list of versions in a project.
      */
-    @Tool(name = "get_project_versions", description = "Returns all versions in a project. The response is not paginated.")
-    public List<Version> getProjectVersions(@ToolArg(description = "The ID or key of the project.") String projectIdOrKey,
-                                            @ToolArg(required = false, description = "Use expand to include additional information in the response. This parameter accepts operations, which returns actions that can be performed on the version.") String expand) {
-        return ExceptionFunction.DoInException(() -> new ProjectVersionsApi(apiClient).getProjectVersions(projectIdOrKey, expand), "get_project_versions");
+    @Tool(name = "get_project_versions", description = """
+        Returns a paginated list of all versions in a project. 
+        """)
+    public PageBeanVersion getProjectVersions(@ToolArg(description = "The project ID or project key (case sensitive).") String projectIdOrKey,
+        @ToolArg(required = false, description = "The index of the first item to return in a page of results (page offset). Default: 0.") Long startAt,
+        @ToolArg(required = false, description = "The maximum number of items to return per page. Default: 50.") Integer maxResults,
+        @ToolArg(required = false, description = """
+            Order the results by a field:
+            - description: Sorts by version description.
+            - name: Sorts by version name.
+            - releaseDate: Sorts by release date, starting with the oldest date. Versions with no release date are listed last.
+            - sequence: Sorts by the order of appearance in the user interface.
+            - startDate: Sorts by start date, starting with the oldest date. Versions with no start date are listed last.
+            Valid values: description, -description, +description, name, -name, +name, releaseDate, -releaseDate, +releaseDate, sequence, -sequence, +sequence, startDate, -startDate, +startDate""") String orderBy,
+        @ToolArg(required = false, description = "Filter the results using a literal string. Versions with matching name or description are returned (case insensitive).") String query,
+        @ToolArg(required = false, description = "A list of status values used to filter the results by version status. This parameter accepts a comma-separated list. The status values are released, unreleased, and archived.") String status,
+        @ToolArg(required = false, description = """
+            Use expand to include additional information in the response. This parameter accepts a comma-separated list. Expand options include:
+            - issuesstatus: Returns the number of issues in each status category for each version.
+            - operations: Returns actions that can be performed on the specified version.
+            - driver: Returns the Atlassian account ID of the version driver.
+            - approvers: Returns a list containing the approvers for this version.""") String expand) {
+        return ExceptionFunction.DoInException(() -> new ProjectVersionsApi(apiClient).getProjectVersionsPaginated(projectIdOrKey, startAt, maxResults, orderBy, query, status, expand), "get_project_versions");
     }
 
     /**
