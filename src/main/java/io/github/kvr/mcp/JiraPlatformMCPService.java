@@ -9,6 +9,7 @@ import com.atlassian.jira.platform.api.*;
 import com.atlassian.jira.platform.model.*;
 import io.quarkiverse.mcp.server.Tool;
 import io.quarkiverse.mcp.server.ToolArg;
+import io.vertx.core.http.HttpServerRequest;
 import jakarta.inject.Inject;
 
 
@@ -16,15 +17,8 @@ import jakarta.inject.Inject;
  * Jira Platform MCP Service
  */
 public class JiraPlatformMCPService {
-    private final ApiClient apiClient;
-
-    /**
-     * Constructor
-     */
     @Inject
-    public JiraPlatformMCPService(ApiClient apiClient) {
-        this.apiClient = apiClient;
-    }
+    HttpServerRequest request;
 
     /**
      * Get an issue 
@@ -69,7 +63,7 @@ public class JiraPlatformMCPService {
             prop1,prop2 Returns prop1 and prop2 properties.""") List<String> properties,
         @ToolArg(required = false, description = "Whether the project in which the issue is created is added to the user's Recently viewed project list, as shown under Projects in Jira. This also populates the JQL issues search lastViewed field.") Boolean updateHistory
         ) {
-        return ExceptionFunction.DoInException(() -> new IssuesApi(apiClient).getIssue(issueIdOrKey, fields, fieldsByKeys, expand, properties, updateHistory, false), "get_issue");
+        return ExceptionFunction.DoInException(() -> new IssuesApi(JiraMCPApplication.getApiClient(request)).getIssue(issueIdOrKey, fields, fieldsByKeys, expand, properties, updateHistory, false), "get_issue");
     }
 
     /**
@@ -85,7 +79,7 @@ public class JiraPlatformMCPService {
         Search for issues using Jira Query Language(JQL) enhanced search.
         The JQL query is used to search for issues in Jira. The query can include various fields and operators to filter the results.
         """)
-    public String searchIssuesByJql(@ToolArg(required = false, description = """
+    public SearchAndReconcileResults searchIssuesByJql(@ToolArg(required = false, description = """
             A JQL (JIRA Query Language) expression to search for issues.
             JQL fields documentation: https://support.atlassian.com/jira-software-cloud/docs/jql-fields/
             Examples:
@@ -120,7 +114,7 @@ public class JiraPlatformMCPService {
             """) String expand,
         @ToolArg(required = false, description = "A list of up to 5 issue properties to include in the results. This parameter accepts a comma-separated list.") List<String> properties,
         @ToolArg(required = false, description = "Whether fields in fields are referenced by keys rather than IDs. This parameter is useful where fields have been added by a connect app and a field's key may differ from its ID.") Boolean fieldsByKeys) {
-        return ExceptionFunction.DoInException(() -> new IssueSearchApi(apiClient).searchAndReconsileIssuesUsingJql(jql, null, maxResults, fields, expand, properties, fieldsByKeys, false, null).toJson(), "search_issues_by_jql");
+        return ExceptionFunction.DoInException(() -> new IssueSearchApi(JiraMCPApplication.getApiClient(request)).searchAndReconsileIssuesUsingJql(jql, null, maxResults, fields, expand, properties, fieldsByKeys, false, null), "search_issues_by_jql");
     }
 
     /**
@@ -129,7 +123,7 @@ public class JiraPlatformMCPService {
      */
     @Tool(name = "get_issue_fields", description = "Get all jira issue fields")
     public List<FieldDetails> getIssueFields() {        
-        return ExceptionFunction.DoInException(() -> new IssueFieldsApi(apiClient).getFields(), "get_issue_fields");
+        return ExceptionFunction.DoInException(() -> new IssueFieldsApi(JiraMCPApplication.getApiClient(request)).getFields(), "get_issue_fields");
     }
 
     /**
@@ -138,7 +132,7 @@ public class JiraPlatformMCPService {
      */
     @Tool(name = "get_myself_info", description = "Get current user info")
     public User getMyselfInfo() {
-        return ExceptionFunction.DoInException(() -> new MyselfApi(apiClient).getCurrentUser(null), "get_myself_info");
+        return ExceptionFunction.DoInException(() -> new MyselfApi(JiraMCPApplication.getApiClient(request)).getCurrentUser(null), "get_myself_info");
     }
 
     /**
@@ -148,7 +142,7 @@ public class JiraPlatformMCPService {
      */
     @Tool(name = "search_users", description = "Search for users by name or email")
     public List<User> SearchUsers(@ToolArg(description = "The name or email of the user to search for. The string can match the prefix of the attribute's value.") String nameOrEmail) {
-        return ExceptionFunction.DoInException(() -> new UserSearchApi(apiClient).findUsers(nameOrEmail, null, null, null, null, null), "search_users");
+        return ExceptionFunction.DoInException(() -> new UserSearchApi(JiraMCPApplication.getApiClient(request)).findUsers(nameOrEmail, null, null, null, null, null), "search_users");
     }
 
     /**
@@ -158,7 +152,7 @@ public class JiraPlatformMCPService {
      */
     @Tool(name = "get_issue_transitions", description = "Get either all transitions or a transition that can be performed by the user on an issue, based on the issue's status")
     public Transitions getIssueTransitions(@ToolArg(description = "The ID or key of the issue.") String issueIdOrKey) {
-        return ExceptionFunction.DoInException(() -> new IssuesApi(apiClient).getTransitions(issueIdOrKey, null, null, null, null, null), "get_issue_transitions");
+        return ExceptionFunction.DoInException(() -> new IssuesApi(JiraMCPApplication.getApiClient(request)).getTransitions(issueIdOrKey, null, null, null, null, null), "get_issue_transitions");
     }
 
     /**
@@ -194,7 +188,7 @@ public class JiraPlatformMCPService {
             - operations: Returns actions that can be performed on the specified version.
             - driver: Returns the Atlassian account ID of the version driver.
             - approvers: Returns a list containing the approvers for this version.""") String expand) {
-        return ExceptionFunction.DoInException(() -> new ProjectVersionsApi(apiClient).getProjectVersionsPaginated(projectIdOrKey, startAt, maxResults, orderBy, query, status, expand), "get_project_versions");
+        return ExceptionFunction.DoInException(() -> new ProjectVersionsApi(JiraMCPApplication.getApiClient(request)).getProjectVersionsPaginated(projectIdOrKey, startAt, maxResults, orderBy, query, status, expand), "get_project_versions");
     }
 
     /**
@@ -321,7 +315,7 @@ public class JiraPlatformMCPService {
             if (properties != null) {
                 issueUpdateDetails.setProperties(properties);
             }
-            return new IssuesApi(apiClient).createIssue(issueUpdateDetails, null);  
+            return new IssuesApi(JiraMCPApplication.getApiClient(request)).createIssue(issueUpdateDetails, null);  
         }, "create_issue");
     }
 
@@ -419,7 +413,7 @@ public class JiraPlatformMCPService {
             if (properties != null) {
                 issueUpdateDetails.setProperties(properties);
             }
-            var ret = new IssuesApi(apiClient).editIssue(issueIdOrKey, issueUpdateDetails, null, null, null, null, null);
+            var ret = new IssuesApi(JiraMCPApplication.getApiClient(request)).editIssue(issueIdOrKey, issueUpdateDetails, null, null, null, null, null);
             return ret == null ? "Issue updated" : ret.toString();
         }, "update_issue");
     }
@@ -432,7 +426,7 @@ public class JiraPlatformMCPService {
     @Tool(name = "delete_issue", description = "Delete an jira issue")
     public String deleteIssue(@ToolArg(description = "The ID or key of the issue.") String issueIdOrKey) {
         return ExceptionFunction.DoInException(() -> {
-            new IssuesApi(apiClient).deleteIssue(issueIdOrKey, null);
+            new IssuesApi(JiraMCPApplication.getApiClient(request)).deleteIssue(issueIdOrKey, null);
             return "Issue deleted";
         }, "delete_issue");
     }
@@ -478,7 +472,7 @@ public class JiraPlatformMCPService {
             """) String commentBody) {
         var comment = new Comment();
         comment.setBody(Helper.getMapFromJsonString(commentBody));
-        return ExceptionFunction.DoInException(() -> new IssueCommentsApi(apiClient).addComment(issueIdOrKey, comment, null), "add_jira_comment");
+        return ExceptionFunction.DoInException(() -> new IssueCommentsApi(JiraMCPApplication.getApiClient(request)).addComment(issueIdOrKey, comment, null), "add_jira_comment");
     }
 
     /**
@@ -502,7 +496,7 @@ public class JiraPlatformMCPService {
             if (fields != null) {
             issueUpdateDetails.fields(Helper.getMapFromJsonString(fields));
             }
-            var ret = new IssuesApi(apiClient).doTransition(issueIdOrKey, issueUpdateDetails);
+            var ret = new IssuesApi(JiraMCPApplication.getApiClient(request)).doTransition(issueIdOrKey, issueUpdateDetails);
             return ret == null ? "Transitioned" : ret.toString();
         }, "transition_jira_issue");
     }
@@ -523,6 +517,6 @@ public class JiraPlatformMCPService {
             - `originalFilename`: The original file name of the attachment, normally it is the file name of attachment. default is noname
             - `contentType`: The content/media type of the attachment. default is `text/plain`, e.g. `text/csv`,`application/pdf` ...
            """) List<MultipartFile> files) {
-        return  ExceptionFunction.DoInException(() -> new IssueAttachmentsApiEx(apiClient).addAttachments(issueIdOrKey, files), "add_jira_attachments");
+        return  ExceptionFunction.DoInException(() -> new IssueAttachmentsApiEx(JiraMCPApplication.getApiClient(request)).addAttachments(issueIdOrKey, files), "add_jira_attachments");
     }
 }

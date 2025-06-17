@@ -2,24 +2,21 @@ package io.github.kvr.mcp;
 
 import com.atlassian.jira.invoker.ApiClient;
 import com.atlassian.jira.invoker.auth.HttpBasicAuth;
-import jakarta.enterprise.inject.Produces;
-import org.eclipse.microprofile.config.inject.ConfigProperty;
+
+import io.vertx.core.http.HttpServerRequest;
 
 /**
  * Jira MCP Application
  */
 public class JiraMCPApplication {
-    @Produces
-    public ApiClient getApiClient(@ConfigProperty(name = "atlassian.url") String basePath,
-                                   @ConfigProperty(name = "atlassian.username") String username,
-                                   @ConfigProperty(name = "atlassian.pat") String pat) {
+    public static ApiClient getApiClient(HttpServerRequest request) {
         ApiClient apiClient = new ApiClient();
-        apiClient.setBasePath(basePath);
+        apiClient.setBasePath(request.getHeader("x-atlassian-url"));
 
         // Configure HTTP basic authorization: basicAuth
         HttpBasicAuth basicAuth = (HttpBasicAuth) apiClient.getAuthentication("basicAuth");
-        basicAuth.setUsername(username);
-        basicAuth.setPassword(pat);
+        basicAuth.setUsername(request.getHeader("x-atlassian-username"));
+        basicAuth.setPassword(request.getHeader("x-atlassian-pat"));
 
         return apiClient;
     }
