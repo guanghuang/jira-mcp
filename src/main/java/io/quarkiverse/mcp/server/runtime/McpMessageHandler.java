@@ -11,23 +11,35 @@ import org.jboss.logging.Logger;
 import io.quarkiverse.mcp.server.ClientCapability;
 import io.quarkiverse.mcp.server.Implementation;
 import io.quarkiverse.mcp.server.InitialRequest;
-import io.quarkiverse.mcp.server.McpConnection;
 import io.quarkiverse.mcp.server.McpLog.LogLevel;
 import io.quarkiverse.mcp.server.Notification.Type;
 import io.quarkiverse.mcp.server.NotificationManager;
 import io.quarkiverse.mcp.server.runtime.FeatureManagerBase.FeatureExecutionContext;
 import io.quarkiverse.mcp.server.runtime.config.McpRuntimeConfig;
 import io.quarkus.runtime.LaunchMode;
+import io.quarkus.vertx.core.runtime.context.VertxContextSafetyToggle;
+import io.smallrye.common.vertx.VertxContext;
 import io.vertx.core.AsyncResult;
+import io.vertx.core.Context;
 import io.vertx.core.Future;
 import io.vertx.core.Handler;
+import io.vertx.core.Promise;
+import io.vertx.core.Vertx;
+import io.vertx.core.json.JsonArray;
 import io.vertx.core.json.JsonObject;
 
-public class McpMessageHandler {
+public class McpMessageHandler<MCP_REQUEST extends McpRequest> {
 
     private static final Logger LOG = Logger.getLogger(McpMessageHandler.class);
 
     protected final ConnectionManager connectionManager;
+    protected final PromptManagerImpl promptManager;
+    protected final ToolManagerImpl toolManager;
+    protected final ResourceManagerImpl resourceManager;
+    protected final PromptCompletionManagerImpl promptCompletionManager;
+    protected final ResourceTemplateManagerImpl resourceTemplateManager;
+    protected final ResourceTemplateCompletionManagerImpl resourceTemplateCompletionManager;
+    protected final NotificationManagerImpl notificationManager;
 
     private final ToolMessageHandler toolHandler;
     private final PromptMessageHandler promptHandler;
@@ -36,99 +48,167 @@ public class McpMessageHandler {
     private final ResourceTemplateMessageHandler resourceTemplateHandler;
     private final ResourceTemplateCompleteMessageHandler resourceTemplateCompleteHandler;
 
-    private final NotificationManagerImpl notificationManager;
-
     private final ResponseHandlers responseHandlers;
 
     protected final McpRuntimeConfig config;
 
-    private final Map<String, Object> serverInfo;
+    protected final Vertx vertx;
+
+    private final McpMetadata metadata;
 
     protected McpMessageHandler(McpRuntimeConfig config, ConnectionManager connectionManager, PromptManagerImpl promptManager,
-                                ToolManagerImpl toolManager, ResourceManagerImpl resourceManager, PromptCompletionManagerImpl promptCompleteManager,
+                                ToolManagerImpl toolManager, ResourceManagerImpl resourceManager,
+                                PromptCompletionManagerImpl promptCompletionManager,
                                 ResourceTemplateManagerImpl resourceTemplateManager,
-                                ResourceTemplateCompleteManagerImpl resourceTemplateCompleteManager, NotificationManagerImpl notificationManager,
+                                ResourceTemplateCompletionManagerImpl resourceTemplateCompletionManager,
+                                NotificationManagerImpl notificationManager,
                                 ResponseHandlers responseHandlers,
-                                McpMetadata metadata) {
+                                McpMetadata metadata, Vertx vertx) {
         this.connectionManager = connectionManager;
+        this.promptManager = promptManager;
+        this.toolManager = toolManager;
+        this.resourceManager = resourceManager;
+        this.resourceTemplateManager = resourceTemplateManager;
+        this.promptCompletionManager = promptCompletionManager;
+        this.resourceTemplateCompletionManager = resourceTemplateCompletionManager;
         this.toolHandler = new ToolMessageHandler(toolManager, config.tools().pageSize());
         this.promptHandler = new PromptMessageHandler(promptManager, config.prompts().pageSize());
-        this.promptCompleteHandler = new PromptCompleteMessageHandler(promptCompleteManager);
+        this.promptCompleteHandler = new PromptCompleteMessageHandler(promptCompletionManager);
         this.resourceHandler = new ResourceMessageHandler(resourceManager, config.resources().pageSize());
         this.resourceTemplateHandler = new ResourceTemplateMessageHandler(resourceTemplateManager,
                 config.resourceTemplates().pageSize());
-        this.resourceTemplateCompleteHandler = new ResourceTemplateCompleteMessageHandler(resourceTemplateCompleteManager);
+        this.resourceTemplateCompleteHandler = new ResourceTemplateCompleteMessageHandler(resourceTemplateCompletionManager);
         this.notificationManager = notificationManager;
         this.responseHandlers = responseHandlers;
         this.config = config;
-        this.serverInfo = serverInfo(promptManager, toolManager, resourceManager, resourceTemplateManager, metadata);
+        this.metadata = metadata;
+        this.vertx = vertx;
     }
 
-    public void handle(JsonObject message, McpConnectionBase connection, Sender sender, SecuritySupport securitySupport) {
-        if (Messages.isResponse(message)) {
-            // Response from a client
-            responseHandlers.handleResponse(message.getValue("id"), message);
-        } else {
-            switch (connection.status()) {
-                case NEW -> initializeNew(message, sender, connection, securitySupport);
-                case INITIALIZING -> initializing(message, sender, connection, securitySupport);
-                case IN_OPERATION -> operation(message, sender, connection, securitySupport);
-                case CLOSED -> sender.send(
-                        Messages.newError(message.getValue("id"), JsonRPC.INTERNAL_ERROR, "Connection is closed"));
+    public Future<?> handle(MCP_REQUEST mcpRequest) {
+        Object json = mcpRequest.json();
+        if (json instanceof JsonObject message) {
+            // Single request, notification, or response
+            mcpRequest.messageReceived(message);
+            if (JsonRPC.validate(message, mcpRequest.sender())) {
+                return Messages.isResponse(message) ? handleResponse(message)
+                        : handleRequest(message, mcpRequest);
+            } else {
+                jsonrpcValidationFailed(mcpRequest);
+            }
+        } else if (json instanceof JsonArray batch) {
+            // Batch of messages
+            if (!batch.isEmpty()) {
+                List<Future<Void>> all = new ArrayList<>();
+                if (Messages.isResponse(batch.getJsonObject(0))) {
+                    // Batch of responses
+                    for (Object e : batch) {
+                        JsonObject response = (JsonObject) e;
+                        mcpRequest.messageReceived(response);
+                        if (JsonRPC.validate(response, mcpRequest.sender())) {
+                            all.add(handleResponse(response));
+                        } else {
+                            jsonrpcValidationFailed(mcpRequest);
+                        }
+                    }
+                } else {
+                    // Batch of requests/notifications
+                    for (Object e : batch) {
+                        JsonObject requestOrNotification = (JsonObject) e;
+                        mcpRequest.messageReceived(requestOrNotification);
+                        if (JsonRPC.validate(requestOrNotification, mcpRequest.sender())) {
+                            all.add(handleRequest(requestOrNotification, mcpRequest));
+                        } else {
+                            jsonrpcValidationFailed(mcpRequest);
+                        }
+                    }
+                }
+                return Future.all(all);
             }
         }
+        return Future.failedFuture("Invalid jsonrpc message");
     }
 
-    private void initializeNew(JsonObject message, Sender sender, McpConnectionBase connection,
-                               SecuritySupport securitySupport) {
+    protected void jsonrpcValidationFailed(MCP_REQUEST mcpRequest) {
+        // No-op
+    }
+
+    protected void initializeFailed(MCP_REQUEST mcpRequest) {
+        // No-op
+    }
+
+    protected void afterInitialize(MCP_REQUEST mcpRequest) {
+        // No-op
+    }
+
+    private Future<Void> handleResponse(JsonObject message) {
+        return responseHandlers.handleResponse(message.getValue("id"), message);
+    }
+
+    private Future<Void> handleRequest(JsonObject message, MCP_REQUEST mcpRequest) {
+        return switch (mcpRequest.connection().status()) {
+            case NEW -> initializeNew(message, mcpRequest);
+            case INITIALIZING -> initializing(message, mcpRequest);
+            case IN_OPERATION -> operation(message, mcpRequest);
+            case CLOSED -> mcpRequest.sender().send(
+                    Messages.newError(message.getValue("id"), JsonRPC.INTERNAL_ERROR, "Connection is closed"));
+        };
+    }
+
+    private Future<Void> initializeNew(JsonObject message, MCP_REQUEST mcpRequest) {
         Object id = message.getValue("id");
-        // The first message must be "initialize"
         String method = message.getString("method");
-        if (!INITIALIZE.equals(method)) {
-            // In the dev mode, if an MCP client attempts to reconnect an SSE connection but does not reinitialize propertly,
-            // we could perform a "dummy" initialization
-//            if (LaunchMode.current() == LaunchMode.DEVELOPMENT && config.devMode().dummyInit()) {
-                InitialRequest dummy = new InitialRequest(new Implementation("dummy", "1"), DEFAULT_PROTOCOL_VERSION,
-                        List.of());
-                if (connection.initialize(dummy) && connection.setInitialized()) {
-                    LOG.infof("Connection initialized with dummy info [%s]", connection.id());
-                    operation(message, sender, connection, securitySupport);
-                    return;
-                }
-//            }
-            sender.sendError(id, JsonRPC.METHOD_NOT_FOUND,
-                    "The first message from the client must be \"initialize\": " + method);
-            return;
-        }
         JsonObject params = message.getJsonObject("params");
-        if (params == null) {
-            sender.sendError(id, JsonRPC.INVALID_PARAMS, "Initialization params not found");
-            return;
+
+        // The first message must be "initialize"
+        // However, in the dev mode if an MCP client attempts to reconnect an SSE connection but does not reinitialize propertly,
+        // we could perform a "dummy" initialization
+        if (!INITIALIZE.equals(method)) {
+//            if (LaunchMode.current() == LaunchMode.DEVELOPMENT && config.devMode().dummyInit()) {
+            InitialRequest dummy = new InitialRequest(new Implementation("dummy", "1"), SUPPORTED_PROTOCOL_VERSIONS.get(0),
+                    List.of());
+            if (mcpRequest.connection().initialize(dummy) && mcpRequest.connection().setInitialized()) {
+                LOG.infof("Connection initialized with dummy info [%s]", mcpRequest.connection().id());
+                return operation(message, mcpRequest);
+            }
+//            }
+
+            String msg = "The first message from the client must be \"initialize\": " + method;
+            initializeFailed(mcpRequest);
+            return mcpRequest.sender().sendError(id, JsonRPC.METHOD_NOT_FOUND, msg);
         }
-        // TODO schema validation?
-        if (connection.initialize(decodeInitializeRequest(params))) {
+
+        if (params == null) {
+            String msg = "Initialization params not found";
+            initializeFailed(mcpRequest);
+            return mcpRequest.sender().sendError(id, JsonRPC.INVALID_PARAMS, msg);
+        }
+
+        InitialRequest initialRequest = decodeInitializeRequest(params);
+        if (mcpRequest.connection().initialize(initialRequest)) {
             // The server MUST respond with its own capabilities and information
-            sender.sendResult(id, serverInfo);
+            afterInitialize(mcpRequest);
+            return mcpRequest.sender().sendResult(id, serverInfo(mcpRequest, initialRequest));
         } else {
-            sender.sendError(id, JsonRPC.INTERNAL_ERROR,
-                    "Unable to initialize connection [connectionId: " + connection.id() + "]");
+            initializeFailed(mcpRequest);
+            String msg = "Unable to initialize connection [connectionId: " + mcpRequest.connection().id() + "]";
+            return mcpRequest.sender().sendError(id, JsonRPC.INTERNAL_ERROR, msg);
         }
     }
 
-    private void initializing(JsonObject message, Sender sender, McpConnectionBase connection,
-                              SecuritySupport securitySupport) {
+    private Future<Void> initializing(JsonObject message, McpRequest mcpRequest) {
         String method = message.getString("method");
         if (NOTIFICATIONS_INITIALIZED.equals(method)) {
-            if (connection.setInitialized()) {
-                LOG.debugf("Client successfully initialized [%s]", connection.id());
+            if (mcpRequest.connection().setInitialized()) {
+                LOG.debugf("Client successfully initialized [%s]", mcpRequest.connection().id());
                 // Call init methods
-                List<NotificationManager.NotificationInfo> infos = notificationManager.infoStream()
+                List<NotificationManager.NotificationInfo> infos = notificationManager.infos(mcpRequest.connection())
                         .filter(n -> n.type() == Type.INITIALIZED).toList();
                 if (!infos.isEmpty()) {
-                    ArgumentProviders argProviders = new ArgumentProviders(Map.of(), connection, null, null, sender, null,
+                    ArgumentProviders argProviders = new ArgumentProviders(Map.of(), mcpRequest.connection(), null, null,
+                            mcpRequest.sender(), null,
                             responseHandlers);
-                    FeatureExecutionContext featureExecutionContext = new FeatureExecutionContext(argProviders,
-                            securitySupport);
+                    FeatureExecutionContext featureExecutionContext = new FeatureExecutionContext(argProviders, mcpRequest);
                     for (NotificationManager.NotificationInfo notification : infos) {
                         try {
                             Future<Void> fu = notificationManager.execute(notificationManager.key(notification),
@@ -147,70 +227,88 @@ public class McpMessageHandler {
                     }
                 }
             }
+            return Future.succeededFuture();
         } else if (PING.equals(method)) {
-            ping(message, sender);
+            return ping(message, mcpRequest);
         } else {
-            sender.send(Messages.newError(message.getValue("id"), JsonRPC.INTERNAL_ERROR,
-                    "Client not initialized yet [" + connection.id() + "]"));
+            return mcpRequest.sender().send(Messages.newError(message.getValue("id"), JsonRPC.INTERNAL_ERROR,
+                    "Client not initialized yet [" + mcpRequest.connection().id() + "]"));
         }
     }
 
-    static final String INITIALIZE = "initialize";
-    static final String NOTIFICATIONS_INITIALIZED = "notifications/initialized";
-    static final String NOTIFICATIONS_MESSAGE = "notifications/message";
-    static final String NOTIFICATIONS_PROGRESS = "notifications/progress";
-    static final String NOTIFICATIONS_TOOLS_LIST_CHANGED = "notifications/tools/list_changed";
-    static final String NOTIFICATIONS_RESOURCES_LIST_CHANGED = "notifications/resources/list_changed";
-    static final String NOTIFICATIONS_PROMPTS_LIST_CHANGED = "notifications/prompts/list_changed";
-    static final String NOTIFICATIONS_ROOTS_LIST_CHANGED = "notifications/roots/list_changed";
-    static final String PROMPTS_LIST = "prompts/list";
-    static final String PROMPTS_GET = "prompts/get";
-    static final String TOOLS_LIST = "tools/list";
-    static final String TOOLS_CALL = "tools/call";
-    static final String RESOURCES_LIST = "resources/list";
-    static final String RESOURCE_TEMPLATES_LIST = "resources/templates/list";
-    static final String RESOURCES_READ = "resources/read";
-    static final String RESOURCES_SUBSCRIBE = "resources/subscribe";
-    static final String RESOURCES_UNSUBSCRIBE = "resources/unsubscribe";
-    static final String PING = "ping";
-    static final String ROOTS_LIST = "roots/list";
-    static final String SAMPLING_CREATE_MESSAGE = "sampling/createMessage";
-    static final String COMPLETION_COMPLETE = "completion/complete";
-    static final String LOGGING_SET_LEVEL = "logging/setLevel";
+    public static final String INITIALIZE = "initialize";
+    public static final String NOTIFICATIONS_INITIALIZED = "notifications/initialized";
+    public static final String NOTIFICATIONS_MESSAGE = "notifications/message";
+    public static final String NOTIFICATIONS_PROGRESS = "notifications/progress";
+    public static final String NOTIFICATIONS_TOOLS_LIST_CHANGED = "notifications/tools/list_changed";
+    public static final String NOTIFICATIONS_RESOURCES_LIST_CHANGED = "notifications/resources/list_changed";
+    public static final String NOTIFICATIONS_PROMPTS_LIST_CHANGED = "notifications/prompts/list_changed";
+    public static final String NOTIFICATIONS_ROOTS_LIST_CHANGED = "notifications/roots/list_changed";
+    public static final String PROMPTS_LIST = "prompts/list";
+    public static final String PROMPTS_GET = "prompts/get";
+    public static final String TOOLS_LIST = "tools/list";
+    public static final String TOOLS_CALL = "tools/call";
+    public static final String RESOURCES_LIST = "resources/list";
+    public static final String RESOURCE_TEMPLATES_LIST = "resources/templates/list";
+    public static final String RESOURCES_READ = "resources/read";
+    public static final String RESOURCES_SUBSCRIBE = "resources/subscribe";
+    public static final String RESOURCES_UNSUBSCRIBE = "resources/unsubscribe";
+    public static final String PING = "ping";
+    public static final String ROOTS_LIST = "roots/list";
+    public static final String SAMPLING_CREATE_MESSAGE = "sampling/createMessage";
+    public static final String COMPLETION_COMPLETE = "completion/complete";
+    public static final String LOGGING_SET_LEVEL = "logging/setLevel";
     // non-standard messages
-    static final String Q_CLOSE = "q/close";
+    public static final String Q_CLOSE = "q/close";
 
-    private void operation(JsonObject message, Sender sender, McpConnection connection, SecuritySupport securitySupport) {
-        String method = message.getString("method");
-        switch (method) {
-            case PROMPTS_LIST -> promptHandler.promptsList(message, sender);
-            case PROMPTS_GET -> promptHandler.promptsGet(message, sender, connection, securitySupport);
-            case TOOLS_LIST -> toolHandler.toolsList(message, sender);
-            case TOOLS_CALL -> toolHandler.toolsCall(message, sender, connection, securitySupport);
-            case PING -> ping(message, sender);
-            case RESOURCES_LIST -> resourceHandler.resourcesList(message, sender);
-            case RESOURCES_READ -> resourceHandler.resourcesRead(message, sender, connection, securitySupport);
-            case RESOURCES_SUBSCRIBE -> resourceHandler.resourcesSubscribe(message, sender, connection);
-            case RESOURCES_UNSUBSCRIBE -> resourceHandler.resourcesUnsubscribe(message, sender, connection);
-            case RESOURCE_TEMPLATES_LIST -> resourceTemplateHandler.resourceTemplatesList(message, sender);
-            case COMPLETION_COMPLETE -> complete(message, sender, connection, securitySupport);
-            case LOGGING_SET_LEVEL -> setLogLevel(message, sender, connection);
-            case Q_CLOSE -> close(message, sender, connection);
-            case NOTIFICATIONS_ROOTS_LIST_CHANGED -> rootsListChanged(sender, connection, securitySupport);
-            default -> sender.send(
-                    Messages.newError(message.getValue("id"), JsonRPC.METHOD_NOT_FOUND, "Unsupported method: " + method));
-        }
+    private Future<Void> operation(JsonObject message, McpRequest mcpRequest) {
+        // Create a new duplicated context and process the operation on this context
+        Context context = VertxContext.createNewDuplicatedContext(vertx.getOrCreateContext());
+        VertxContextSafetyToggle.setContextSafe(context, true);
+        Promise<Void> ret = Promise.promise();
+
+        context.runOnContext(v -> {
+            mcpRequest.operationStart();
+            String method = message.getString("method");
+            Future<Void> future = switch (method) {
+                case PROMPTS_LIST -> promptHandler.promptsList(message, mcpRequest);
+                case PROMPTS_GET -> promptHandler.promptsGet(message, mcpRequest);
+                case TOOLS_LIST -> toolHandler.toolsList(message, mcpRequest);
+                case TOOLS_CALL -> toolHandler.toolsCall(message, mcpRequest);
+                case PING -> ping(message, mcpRequest);
+                case RESOURCES_LIST -> resourceHandler.resourcesList(message, mcpRequest);
+                case RESOURCES_READ -> resourceHandler.resourcesRead(message, mcpRequest);
+                case RESOURCES_SUBSCRIBE -> resourceHandler.resourcesSubscribe(message, mcpRequest);
+                case RESOURCES_UNSUBSCRIBE -> resourceHandler.resourcesUnsubscribe(message, mcpRequest);
+                case RESOURCE_TEMPLATES_LIST -> resourceTemplateHandler.resourceTemplatesList(message, mcpRequest);
+                case COMPLETION_COMPLETE -> complete(message, mcpRequest);
+                case LOGGING_SET_LEVEL -> setLogLevel(message, mcpRequest);
+                case Q_CLOSE -> close(message, mcpRequest);
+                case NOTIFICATIONS_ROOTS_LIST_CHANGED -> rootsListChanged(mcpRequest);
+                default -> mcpRequest.sender().send(
+                        Messages.newError(message.getValue("id"), JsonRPC.METHOD_NOT_FOUND, "Unsupported method: " + method));
+            };
+            future.onComplete(r -> {
+                mcpRequest.operationEnd();
+                if (r.failed()) {
+                    ret.fail(r.cause());
+                } else {
+                    ret.complete();
+                }
+            });
+        });
+        return ret.future();
     }
 
-    private Object rootsListChanged(Sender sender, McpConnection connection, SecuritySupport securitySupport) {
+    private Future<Void> rootsListChanged(McpRequest mcpRequest) {
         // Call init methods
-        List<NotificationManager.NotificationInfo> infos = notificationManager.infoStream()
+        List<NotificationManager.NotificationInfo> infos = notificationManager.infos(mcpRequest.connection())
                 .filter(n -> n.type() == Type.ROOTS_LIST_CHANGED).toList();
         if (!infos.isEmpty()) {
-            ArgumentProviders argProviders = new ArgumentProviders(Map.of(), connection, null, null, sender, null,
+            ArgumentProviders argProviders = new ArgumentProviders(Map.of(), mcpRequest.connection(), null, null,
+                    mcpRequest.sender(), null,
                     responseHandlers);
-            FeatureExecutionContext featureExecutionContext = new FeatureExecutionContext(argProviders,
-                    securitySupport);
+            FeatureExecutionContext featureExecutionContext = new FeatureExecutionContext(argProviders, mcpRequest);
             for (NotificationManager.NotificationInfo notification : infos) {
                 try {
                     Future<Void> fu = notificationManager.execute(notificationManager.key(notification),
@@ -228,54 +326,51 @@ public class McpMessageHandler {
                 }
             }
         }
-        return null;
+        return Future.succeededFuture();
     }
 
-    private void setLogLevel(JsonObject message, Sender sender, McpConnection connection) {
+    private Future<Void> setLogLevel(JsonObject message, McpRequest mcpRequest) {
         Object id = message.getValue("id");
         JsonObject params = message.getJsonObject("params");
         String level = params.getString("level");
         if (level == null) {
-            sender.sendError(id, JsonRPC.INVALID_REQUEST, "Log level not set");
+            return mcpRequest.sender().sendError(id, JsonRPC.INVALID_REQUEST, "Log level not set");
         } else {
             LogLevel logLevel = LogLevel.from(level);
             if (logLevel == null) {
-                sender.sendError(id, JsonRPC.INVALID_REQUEST, "Invalid log level set: " + level);
+                return mcpRequest.sender().sendError(id, JsonRPC.INVALID_REQUEST, "Invalid log level set: " + level);
             } else {
-                if (connection instanceof McpConnectionBase connectionBase) {
-                    connectionBase.setLogLevel(logLevel);
-                    // Send empty result
-                    sender.sendResult(id, new JsonObject());
-                } else {
-                    throw new IllegalStateException();
-                }
+                mcpRequest.connection().setLogLevel(logLevel);
+                // Send empty result
+                return mcpRequest.sender().sendResult(id, new JsonObject());
             }
         }
 
     }
 
-    private void complete(JsonObject message, Sender sender, McpConnection connection, SecuritySupport securitySupport) {
+    private Future<Void> complete(JsonObject message, McpRequest mcpRequest) {
         Object id = message.getValue("id");
         JsonObject params = message.getJsonObject("params");
         JsonObject ref = params.getJsonObject("ref");
         if (ref == null) {
-            sender.sendError(id, JsonRPC.INVALID_REQUEST, "Reference not found");
+            return mcpRequest.sender().sendError(id, JsonRPC.INVALID_REQUEST, "Reference not found");
         } else {
             String referenceType = ref.getString("type");
             if (referenceType == null) {
-                sender.sendError(id, JsonRPC.INVALID_REQUEST, "Reference type not found");
+                return mcpRequest.sender().sendError(id, JsonRPC.INVALID_REQUEST, "Reference type not found");
             } else {
                 JsonObject argument = params.getJsonObject("argument");
                 if (argument == null) {
-                    sender.sendError(id, JsonRPC.INVALID_REQUEST, "Argument not found");
+                    return mcpRequest.sender().sendError(id, JsonRPC.INVALID_REQUEST, "Argument not found");
                 } else {
                     if ("ref/prompt".equals(referenceType)) {
-                        promptCompleteHandler.complete(message, id, ref, argument, sender, connection, securitySupport);
+                        return promptCompleteHandler.complete(message, id, ref, argument, mcpRequest.sender(),
+                                mcpRequest.connection(), mcpRequest);
                     } else if ("ref/resource".equals(referenceType)) {
-                        resourceTemplateCompleteHandler.complete(message, id, ref, argument, sender, connection,
-                                securitySupport);
+                        return resourceTemplateCompleteHandler.complete(message, id, ref, argument, mcpRequest.sender(),
+                                mcpRequest.connection(), mcpRequest);
                     } else {
-                        sender.sendError(id, JsonRPC.INVALID_REQUEST,
+                        return mcpRequest.sender().sendError(id, JsonRPC.INVALID_REQUEST,
                                 "Unsupported reference found: " + ref.getString("type"));
                     }
                 }
@@ -283,18 +378,19 @@ public class McpMessageHandler {
         }
     }
 
-    private void ping(JsonObject message, Sender sender) {
+    private Future<Void> ping(JsonObject message, McpRequest mcpRequest) {
         Object id = message.getValue("id");
         LOG.debugf("Ping [id: %s]", id);
-        sender.sendResult(id, new JsonObject());
+        return mcpRequest.sender().sendResult(id, new JsonObject());
     }
 
-    private void close(JsonObject message, Sender sender, McpConnection connection) {
-        if (connectionManager.remove(connection.id())) {
-            LOG.debugf("Connection %s explicitly closed ", connection.id());
+    private Future<Void> close(JsonObject message, McpRequest mcpRequest) {
+        if (connectionManager.remove(mcpRequest.connection().id())) {
+            LOG.debugf("Connection %s explicitly closed ", mcpRequest.connection().id());
+            return Future.succeededFuture();
         } else {
-            sender.sendError(message.getValue("id"), JsonRPC.INTERNAL_ERROR,
-                    "Unable to obtain the connection to be closed:" + connection.id());
+            return mcpRequest.sender().sendError(message.getValue("id"), JsonRPC.INTERNAL_ERROR,
+                    "Unable to obtain the connection to be closed:" + mcpRequest.connection().id());
         }
     }
 
@@ -313,28 +409,40 @@ public class McpMessageHandler {
         return new InitialRequest(implementation, protocolVersion, List.copyOf(clientCapabilities));
     }
 
-    private static final String DEFAULT_PROTOCOL_VERSION = "2024-11-05";
+    private static final List<String> SUPPORTED_PROTOCOL_VERSIONS = List.of("2025-03-26", "2024-11-05");
 
-    private Map<String, Object> serverInfo(PromptManagerImpl promptManager, ToolManagerImpl toolManager,
-                                           ResourceManagerImpl resourceManager, ResourceTemplateManagerImpl resourceTemplateManager, McpMetadata metadata) {
+    private Map<String, Object> serverInfo(MCP_REQUEST mcpRequest, InitialRequest initialRequest) {
         Map<String, Object> info = new HashMap<>();
-        info.put("protocolVersion", DEFAULT_PROTOCOL_VERSION);
+
+        // Note that currently the protocol version does not affect the behavior of the server in any way
+        String version = SUPPORTED_PROTOCOL_VERSIONS.get(0);
+        if (SUPPORTED_PROTOCOL_VERSIONS.contains(initialRequest.protocolVersion())) {
+            version = initialRequest.protocolVersion();
+        }
+        info.put("protocolVersion", version);
 
         String serverName = config.serverInfo().name()
-                .orElse(ConfigProvider.getConfig().getOptionalValue("quarkus.application.name", String.class).orElse("N/A"));
+                .orElse(ConfigProvider.getConfig().getOptionalValue("quarkus.application.name", String.class)
+                        .orElse("N/A"));
         String serverVersion = config.serverInfo().version()
-                .orElse(ConfigProvider.getConfig().getOptionalValue("quarkus.application.version", String.class).orElse("N/A"));
+                .orElse(ConfigProvider.getConfig().getOptionalValue("quarkus.application.version", String.class)
+                        .orElse("N/A"));
         info.put("serverInfo", Map.of("name", serverName, "version", serverVersion));
 
         Map<String, Map<String, Object>> capabilities = new HashMap<>();
-        if (!promptManager.isEmpty() || metadata.isPromptManagerUsed()) {
+        if (!promptManager.hasInfos(mcpRequest.connection())) {
             capabilities.put("prompts", metadata.isPromptManagerUsed() ? Map.of("listChanged", true) : Map.of());
         }
-        if (!toolManager.isEmpty() || metadata.isToolManagerUsed()) {
+        if (toolManager.hasInfos(mcpRequest.connection())) {
             capabilities.put("tools", metadata.isToolManagerUsed() ? Map.of("listChanged", true) : Map.of());
         }
-        if (!resourceManager.isEmpty() || !resourceTemplateManager.isEmpty() || metadata.isResourceManagerUsed()) {
+        if (!resourceManager.hasInfos(mcpRequest.connection())
+                || !resourceTemplateManager.hasInfos(mcpRequest.connection())) {
             capabilities.put("resources", metadata.isResourceManagerUsed() ? Map.of("listChanged", true) : Map.of());
+        }
+        if (!promptCompletionManager.hasInfos(mcpRequest.connection())
+                || !resourceTemplateCompletionManager.hasInfos(mcpRequest.connection())) {
+            capabilities.put("completions", Map.of());
         }
         capabilities.put("logging", Map.of());
         info.put("capabilities", capabilities);
