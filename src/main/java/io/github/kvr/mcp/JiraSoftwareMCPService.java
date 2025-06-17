@@ -15,18 +15,15 @@ import com.atlassian.jira.software.model.SearchResults;
 
 import io.quarkiverse.mcp.server.Tool;
 import io.quarkiverse.mcp.server.ToolArg;
+import io.vertx.core.http.HttpServerRequest;
 import jakarta.inject.Inject;
 
 /**
  * Jira Software MCP Service
  */
 public class JiraSoftwareMCPService {
-    private final ApiClient apiClient;
-
     @Inject
-    public JiraSoftwareMCPService(ApiClient apiClient) {
-        this.apiClient = apiClient;
-    }
+    HttpServerRequest request;
 
     /**
      * Get all jira boards
@@ -49,7 +46,7 @@ public class JiraSoftwareMCPService {
                 typeMap.put("type", type);
             }
     
-            return new BoardApi(apiClient).getAllBoards(startAt, maxResults, typeMap, name, projectKeyOrId, null, null, null, null, null, null, null, null);
+            return new BoardApi(JiraMCPApplication.getApiClient(request)).getAllBoards(startAt, maxResults, typeMap, name, projectKeyOrId, null, null, null, null, null, null, null, null);
         }, "get_all_boards");
     }
 
@@ -68,7 +65,7 @@ public class JiraSoftwareMCPService {
         @ToolArg(required = false, description = "A list of fields to return for each issue. This parameter accepts a comma-separated list. Allowed values: *all, *navigable, summary, comment, renderedFields, names, schema, transitions, editmeta, changelog, versionedRepresentations") List<String> fields,
         @ToolArg(required = false, description = "The maximum number of issues to return. Default is 50.") Integer maxResults,
         @ToolArg(required = false, description = "The starting index of the returned issues. Must be number. Base index: 0. Default is 0.") Long startAt) {
-        return ExceptionFunction.DoInException(() -> new BoardApi(apiClient).getIssuesForBoard(boardId, startAt, maxResults, jql, null, fields == null ? null : (List<Object>)(List<?>)fields, null), "get_issues_from_board");
+        return ExceptionFunction.DoInException(() -> new BoardApi(JiraMCPApplication.getApiClient(request)).getIssuesForBoard(boardId, startAt, maxResults, jql, null, fields == null ? null : (List<Object>)(List<?>)fields, null), "get_issues_from_board");
     }
 
     /**
@@ -91,7 +88,7 @@ public class JiraSoftwareMCPService {
                 stateMap.put("state", state);
             }
     
-            return new BoardApi(apiClient).getAllSprints(boardId, startAt, maxResults, stateMap);
+            return new BoardApi(JiraMCPApplication.getApiClient(request)).getAllSprints(boardId, startAt, maxResults, stateMap);
         }, "get_sprints_from_board");
     }
     
@@ -107,7 +104,7 @@ public class JiraSoftwareMCPService {
         @ToolArg(required = false, description = "The maximum number of sprints to return. Default is 50.") Integer maxResults,
         @ToolArg(required = false, description = "The starting index of the returned sprints. Base index: 0. Default is 0.") Long startAt) {
         return ExceptionFunction.DoInException(() -> {
-            return new BoardApi(apiClient).getEpics(boardId, startAt, maxResults, null);
+            return new BoardApi(JiraMCPApplication.getApiClient(request)).getEpics(boardId, startAt, maxResults, null);
         }, "get_epics_from_board");
     }
 
@@ -129,7 +126,7 @@ public class JiraSoftwareMCPService {
         @ToolArg(required = false, description = "The maximum number of issues to return. Default is 50.") Integer maxResults,
         @ToolArg(required = false, description = "The starting index of the returned issues. Must be number. Base index: 0. Default is 0.") Long startAt) {
         return ExceptionFunction.DoInException(() -> {
-            return new BoardApi(apiClient).getBoardIssuesForSprint(boardId, sprintId, startAt, maxResults, jql, null, fields == null ? null : (List<Object>)(List<?>) fields, null);
+            return new BoardApi(JiraMCPApplication.getApiClient(request)).getBoardIssuesForSprint(boardId, sprintId, startAt, maxResults, jql, null, fields == null ? null : (List<Object>)(List<?>) fields, null);
         }, "get_issues_from_sprint");
     }
 
@@ -150,7 +147,7 @@ public class JiraSoftwareMCPService {
         @ToolArg(required = false, description = "A list of fields to return for each issue. This parameter accepts a comma-separated list. Allowed values: *all, *navigable, summary, comment, renderedFields, names, schema, transitions, editmeta, changelog, versionedRepresentations") List<String> fields,
         @ToolArg(required = false, description = "The maximum number of issues to return. Default is 50.") Integer maxResults,
         @ToolArg(required = false, description = "The starting index of the returned issues. Must be number. Base index: 0. Default is 0.") Long startAt) {
-        return ExceptionFunction.DoInException(() -> new BoardApi(apiClient).getBoardIssuesForEpic(boardId, epicId, startAt, maxResults, jql, null, fields == null ? null : (List<Object>)(List<?>)fields, null), "get_issues_from_epic");
+        return ExceptionFunction.DoInException(() -> new BoardApi(JiraMCPApplication.getApiClient(request)).getBoardIssuesForEpic(boardId, epicId, startAt, maxResults, jql, null, fields == null ? null : (List<Object>)(List<?>)fields, null), "get_issues_from_epic");
     }
 
     /**
@@ -167,7 +164,7 @@ public class JiraSoftwareMCPService {
             moveIssuesToBacklogRequest.addIssuesItem(issueIdOrKey);
         }
         return ExceptionFunction.DoInException(() -> {
-            new EpicApi(apiClient).moveIssuesToEpic(epicIdOrKey, moveIssuesToBacklogRequest);
+            new EpicApi(JiraMCPApplication.getApiClient(request)).moveIssuesToEpic(epicIdOrKey, moveIssuesToBacklogRequest);
             return "Issues moved to epic";
         }, "move_issues_to_epic");
     }
