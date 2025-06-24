@@ -79,7 +79,7 @@ public class JiraPlatformMCPService {
         Search for issues using Jira Query Language(JQL) enhanced search.
         The JQL query is used to search for issues in Jira. The query can include various fields and operators to filter the results.
         """)
-    public SearchAndReconcileResults searchIssuesByJql(@ToolArg(required = false, description = """
+    public String searchIssuesByJql(@ToolArg(required = false, description = """
             A JQL (JIRA Query Language) expression to search for issues.
             JQL fields documentation: https://support.atlassian.com/jira-software-cloud/docs/jql-fields/
             Examples:
@@ -114,7 +114,7 @@ public class JiraPlatformMCPService {
             """) String expand,
         @ToolArg(required = false, description = "A list of up to 5 issue properties to include in the results. This parameter accepts a comma-separated list.") List<String> properties,
         @ToolArg(required = false, description = "Whether fields in fields are referenced by keys rather than IDs. This parameter is useful where fields have been added by a connect app and a field's key may differ from its ID.") Boolean fieldsByKeys) {
-        return ExceptionFunction.DoInException(() -> new IssueSearchApi(JiraMCPApplication.getApiClient(request)).searchAndReconsileIssuesUsingJql(jql, null, maxResults, fields, expand, properties, fieldsByKeys, false, null), "search_issues_by_jql");
+        return ExceptionFunction.DoInException(() -> new IssueSearchApi(JiraMCPApplication.getApiClient(request)).searchAndReconsileIssuesUsingJql(jql, null, maxResults, fields, expand, properties, fieldsByKeys, false, null).toJson(), "search_issues_by_jql");
     }
 
     /**

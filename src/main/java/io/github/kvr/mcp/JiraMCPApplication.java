@@ -11,12 +11,14 @@ import io.vertx.core.http.HttpServerRequest;
 public class JiraMCPApplication {
     public static ApiClient getApiClient(HttpServerRequest request) {
         ApiClient apiClient = new ApiClient();
-        apiClient.setBasePath(request.getHeader("x-atlassian-url"));
-
+        var parameters = HttpHeaderParameterHelper.getHeaderParameters(request, new String[]{
+                "x-atlassian-url", "x-atlassian-username", "x-atlassian-pat"
+        });
+        apiClient.setBasePath(parameters[0]);
         // Configure HTTP basic authorization: basicAuth
         HttpBasicAuth basicAuth = (HttpBasicAuth) apiClient.getAuthentication("basicAuth");
-        basicAuth.setUsername(request.getHeader("x-atlassian-username"));
-        basicAuth.setPassword(request.getHeader("x-atlassian-pat"));
+        basicAuth.setUsername(parameters[1]);
+        basicAuth.setPassword(parameters[2]);
 
         return apiClient;
     }
