@@ -1,10 +1,11 @@
 package io.github.kvr.mcp;
 
 import io.vertx.core.http.HttpServerRequest;
+import org.eclipse.microprofile.config.ConfigProvider;
 
+import java.nio.charset.StandardCharsets;
 import java.util.Arrays;
 import java.util.Base64;
-import java.nio.charset.StandardCharsets;
 
 public class HttpHeaderParameterHelper {
     /**
@@ -12,9 +13,10 @@ public class HttpHeaderParameterHelper {
      *
      * @param request The HTTP request.
      * @param headerNames The names of the header parameter.
+     * @param configParameterNames The names of the configuration parameters to fall back on if the header is not present.
      * @return The values of the header parameter.
      */
-    public static String[] getHeaderParameters(HttpServerRequest request, String[] headerNames) {
+    public static String[] getHeaderParameters(HttpServerRequest request, String[] headerNames, String[] configParameterNames) {
         if (request.getHeader("x-config") != null) {
             String[] configValues = request.getHeader("x-config").split("\\.");
             String[] result = new String[headerNames.length];
@@ -27,8 +29,37 @@ public class HttpHeaderParameterHelper {
             return result;
         }
 
-        return Arrays.stream(headerNames).map(request::getHeader)
-                .toArray(String[]::new);
+        String[] result = new String[headerNames.length];
+        for (int i = 0; i < headerNames.length; i++) {
+            // First try to get the value from the header
+            String headerValue = request.getHeader(headerNames[i]);
+
+            // If not found in header, try to get it from configuration
+            if (headerValue == null) {
+                headerValue = getFromConfig(configParameterNames[i]);
+            }
+
+            result[i] = headerValue;
+        }
+        return result;
+    }
+
+    /**
+     * Get a parameter value from the configuration.
+     *
+     * @param name The name of the parameter.
+     * @return The value of the parameter or null if not found.
+     */
+    private static String getFromConfig(String name) {
+        try {
+            // Try to get the value from configuration using "mcp.param." prefix
+            return ConfigProvider.getConfig()
+                    .getOptionalValue(name, String.class)
+                    .orElse(null);
+        } catch (Exception e) {
+            // Log error if needed and return null
+            return null;
+        }
     }
 
     /**
